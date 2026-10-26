@@ -1,0 +1,38 @@
+*** WooCommerce Agent Tools ***
+
+= 0.4.0 - 2026-10-26 =
+* Add - The confirmation gate now covers every write on the store, including abilities WooCommerce and other plugins register, not only the ones this plugin derives. A first call runs nothing and returns a preview plus a token; the same arguments with that token run.
+* Add - Hold a direct REST write made with an application password issued from this plugin's own screen, so a route called without its tool meets the same preview. Every other application password behaves as before.
+* Add - Declare compatibility with High-Performance Order Storage. The plugin never reads or writes an order itself; every call goes through the route's own controller, whatever that controller stores in.
+* Add - Payload shapes for the WooCommerce Shipping rate and label routes, including the fields the carrier server requires but the route never declares.
+* Add - `woocommerce_agent_tools_ability_needs_confirmation`, `woocommerce_agent_tools_route_needs_confirmation` and `woocommerce_agent_tools_guard_rest_request` filters.
+* Fix - Two namespaces compiling to one tool name silently discarded 49 tools and handed every merchant CRUD tool to `wc-analytics` rather than the public `wc/v3` API. Namespace precedence is now declared, and a discarded name is counted instead of lost.
+* Fix - A read handler wrapped in a closure for caching lost its attribution, so a route kept its writes and lost its reads: a tax rate could be created and deleted but never listed. Restores `taxes-list`, `taxes-get`, `products-get`, `orders-get`, `coupons-get` and `customers-get`.
+* Fix - Fetching one record by id is no longer treated as the same capability as querying a collection, which had removed every single-item read.
+* Fix - A hand-written ability no longer suppresses a derived one that publishes more parameters. Restores filtering products by category, tax class, brand, price, sale status and stock.
+* Fix - Stop compiling the Store API into merchant tools. Its routes are scoped to a shopper's own session, so they answered "Permission denied" while shadowing the tools that work.
+* Fix - A boolean `false` rendered as nothing in a preview, so `force=` and `api_refund=` read as absent on the two calls where they matter most.
+* Tweak - agents.md states the rule the store actually enforces, and warns that a write can cascade: setting an order to refunded makes WooCommerce create a refund record against it.
+* Tweak - Say in a tool's description when a write's route declares no parameters and none could be recovered, rather than letting an empty schema read as "takes no arguments".
+* Dev - Dedupe no longer counts this plugin's own discovery tools as another author's work.
+* Dev - Stubs for the MCP Adapter, which ships none, so static analysis no longer stops at every call into it.
+
+= 0.3.0 - 2026-10-24 =
+* Add - Recover parameter names a route never declared by reading its handler, and say in the tool's description which ones have unknown shapes.
+* Add - `woocommerce_agent_tools_route_args` filter, so the plugin owning a route can declare the payload it really accepts without writing an ability definition.
+* Add - Publish the route's own required parameters, so a missing one is reported by name before the call is made.
+* Fix - Keep union types instead of collapsing them to the first, which was rejecting null on 149 parameters the routes accept.
+* Fix - Stop inventing the type `string` for a parameter whose type a route never stated, which rejected every structured value it would have accepted.
+* Fix - Normalise nested schemas at every level, so `arg_options`, `sanitize_callback`, `context` and WordPress's boolean `required` no longer reach the client, and a child's required flag becomes part of its parent's JSON Schema required list.
+* Add - Tell agents not to reconstruct a payload from source code, the database or the admin app's JavaScript, and never to guess on a call that spends money.
+
+= 0.2.0 - 2026-10-24 =
+* Add - A Tools, Agent Tools screen: the endpoint, a button to issue an application password, ready-made client configuration, and what the agent inherits from that user.
+* Add - Extension discovery: search WooCommerce.com and the WordPress.org plugin directory when no installed plugin provides what was asked.
+* Add - agents.md in the MCP handshake, overridable from wp-content.
+* Add - Opaque references for credentials in responses, resolved back when passed to the field they came from.
+* Tweak - Expose every derivable route, leaving the connected user's capabilities as the only boundary.
+* Dev  - Split the compiler into one class per responsibility and added a phpcs ruleset, composer tooling and PHPStan config.
+
+= 0.1.0 - 2026-10-23 =
+* Add - Initial prototype: abilities compiled from the REST route table.

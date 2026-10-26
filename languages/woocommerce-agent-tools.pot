@@ -1,0 +1,179 @@
+# Copyright (C) 2026 WooCommerce
+# This file is distributed under the GNU General Public License v3.0.
+msgid ""
+msgstr ""
+"Project-Id-Version: WooCommerce Agent Tools 0.3.0\n"
+"Report-Msgid-Bugs-To: https://wordpress.org/support/plugin/woocommerce-agent-tools\n"
+"Last-Translator: FULL NAME <EMAIL@ADDRESS>\n"
+"Language-Team: LANGUAGE <LL@li.org>\n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+"POT-Creation-Date: 2026-10-24T21:41:12+00:00\n"
+"PO-Revision-Date: YEAR-MO-DA HO:MI+ZONE\n"
+"X-Generator: WP-CLI 2.12.0\n"
+"X-Domain: woocommerce-agent-tools\n"
+
+#. Plugin Name of the plugin
+#: woocommerce-agent-tools.php
+msgid "WooCommerce Agent Tools"
+msgstr ""
+
+#. Plugin URI of the plugin
+#: woocommerce-agent-tools.php
+msgid "https://github.com/woocommerce/woocommerce"
+msgstr ""
+
+#. Description of the plugin
+#: woocommerce-agent-tools.php
+msgid "Compiles WordPress abilities from plugin REST routes, so an MCP agent sees what the store can actually do. Prototype for internal evaluation."
+msgstr ""
+
+#. Author of the plugin
+#: woocommerce-agent-tools.php
+msgid "WooCommerce"
+msgstr ""
+
+#. Author URI of the plugin
+#: woocommerce-agent-tools.php
+msgid "https://woocommerce.com/"
+msgstr ""
+
+#: includes/class-wc-agent-tools-admin.php:44
+#: includes/class-wc-agent-tools-admin.php:45
+#: includes/class-wc-agent-tools-admin.php:163
+msgid "Agent Tools"
+msgstr ""
+
+#: includes/class-wc-agent-tools-admin.php:94
+msgid "You are not allowed to do that."
+msgstr ""
+
+#: includes/class-wc-agent-tools-admin.php:104
+#: includes/class-wc-agent-tools-admin.php:307
+msgid "Agent (MCP)"
+msgstr ""
+
+#. translators: %d: number of abilities an agent can discover.
+#: includes/class-wc-agent-tools-admin.php:170
+#, php-format
+msgid "This store exposes %d tool to a connected agent, compiled from the REST routes of WooCommerce and the extensions installed beside it."
+msgid_plural "This store exposes %d tools to a connected agent, compiled from the REST routes of WooCommerce and the extensions installed beside it."
+msgstr[0] ""
+msgstr[1] ""
+
+#: includes/class-wc-agent-tools-admin.php:198
+msgid "The application password could not be created."
+msgstr ""
+
+#: includes/class-wc-agent-tools-admin.php:204
+msgid "Application passwords are not available for your account. They require a site reachable over HTTPS, unless the site is local."
+msgstr ""
+
+#: includes/class-wc-agent-tools-admin.php:215
+msgid "Endpoint"
+msgstr ""
+
+#: includes/class-wc-agent-tools-admin.php:218
+msgid "Point your MCP client at this address. The MCP Adapter serves it; there is nothing to configure."
+msgstr ""
+
+#: includes/class-wc-agent-tools-admin.php:234
+msgid "Authentication"
+msgstr ""
+
+#: includes/class-wc-agent-tools-admin.php:241
+msgid "Application password created."
+msgstr ""
+
+#: includes/class-wc-agent-tools-admin.php:242
+msgid "It is shown only once, because only a hash of it is stored."
+msgstr ""
+
+#: includes/class-wc-agent-tools-admin.php:249
+msgid "Claude Code"
+msgstr ""
+
+#: includes/class-wc-agent-tools-admin.php:261
+msgid "Any other MCP client"
+msgstr ""
+
+#: includes/class-wc-agent-tools-admin.php:264
+msgid "Use HTTP transport against the endpoint above, with these headers:"
+msgstr ""
+
+#: includes/class-wc-agent-tools-admin.php:277
+msgid "Most clients read their configuration at start-up, so restart yours after adding this."
+msgstr ""
+
+#: includes/class-wc-agent-tools-admin.php:285
+msgid "Application passwords are unavailable for your account, so a credential has to come from elsewhere. They need the site to be reachable over HTTPS, unless it is a local environment."
+msgstr ""
+
+#. translators: %s: current user's login name.
+#: includes/class-wc-agent-tools-admin.php:295
+#, php-format
+msgid "An MCP client authenticates as a WordPress user. Create an application password for %s and this page will hand you the client configuration, filled in."
+msgstr ""
+
+#: includes/class-wc-agent-tools-admin.php:306
+msgid "Name, so you can recognise and revoke it later"
+msgstr ""
+
+#: includes/class-wc-agent-tools-admin.php:309
+msgid "Create application password"
+msgstr ""
+
+#. translators: %d: number of existing application passwords.
+#: includes/class-wc-agent-tools-admin.php:320
+#, php-format
+msgid "Review or revoke your %d existing application password"
+msgid_plural "Review or revoke your %d existing application passwords"
+msgstr[0] ""
+msgstr[1] ""
+
+#: includes/class-wc-agent-tools-admin.php:335
+msgid "What the agent will be able to do"
+msgstr ""
+
+#. translators: %s: current user's login name.
+#: includes/class-wc-agent-tools-admin.php:342
+#, php-format
+msgid "Every call runs as %s, and each route's own permission check decides. The agent reaches exactly what that user reaches in wp-admin, and nothing more."
+msgstr ""
+
+#: includes/class-wc-agent-tools-admin.php:351
+msgid "install plugins"
+msgstr ""
+
+#: includes/class-wc-agent-tools-admin.php:352
+msgid "activate and deactivate plugins"
+msgstr ""
+
+#: includes/class-wc-agent-tools-admin.php:353
+msgid "change store settings"
+msgstr ""
+
+#. translators: %s: comma-separated list of capabilities.
+#: includes/class-wc-agent-tools-admin.php:364
+#, php-format
+msgid "This account can %s, and can place a real order on WooCommerce.com. An agent holding its application password can do the same, and writes have no undo."
+msgstr ""
+
+#: includes/class-wc-agent-tools-admin.php:368
+msgid "Consider creating a separate user with a narrower role, such as Shop manager, and generating the application password there instead."
+msgstr ""
+
+#: includes/class-wc-agent-tools-admin.php:374
+msgid "To tell the agent how to behave, edit agents.md in this plugin, or place your own at wp-content/agents.md. Its text is sent in the MCP handshake."
+msgstr ""
+
+#: woocommerce-agent-tools.php:94
+msgid "WooCommerce Agent Tools is inactive."
+msgstr ""
+
+#. translators: %s: comma-separated list of missing dependencies.
+#: woocommerce-agent-tools.php:98
+#, php-format
+msgid "It needs %s. No abilities were compiled."
+msgstr ""

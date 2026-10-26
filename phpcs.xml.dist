@@ -1,0 +1,59 @@
+<?xml version="1.0"?>
+<ruleset name="WooCommerce Agent Tools">
+	<description>WordPress and WooCommerce coding standards for this plugin.</description>
+
+	<file>.</file>
+	<exclude-pattern>/vendor/</exclude-pattern>
+	<exclude-pattern>/node_modules/</exclude-pattern>
+	<arg name="extensions" value="php"/>
+	<arg name="basepath" value="."/>
+	<arg name="colors"/>
+	<arg value="sp"/>
+
+	<!-- WooCommerce-Core is the real standard: it pulls in WooCommerce's own sniffs, the
+	     full WordPress standard, PHPCompatibilityWP and Squiz.Commenting. -->
+	<rule ref="WooCommerce-Core"/>
+
+	<!-- Without these two the PHPCompatibility and WP-version sniffs that WooCommerce-Core
+	     includes have nothing to compare against and silently pass everything. Both match
+	     the plugin header. -->
+	<config name="testVersion" value="7.4-"/>
+	<config name="minimum_supported_wp_version" value="6.9"/>
+
+	<!-- WooCommerce's own config adds these on top of the standard. Its class-name and
+	     file-name sniffs are scoped to src/ because that code is PSR-4; this plugin follows
+	     the WordPress class-foo-bar.php convention that WordPress.Files.FileName checks, so
+	     only these three carry over. -->
+	<rule ref="Generic.PHP.RequireStrictTypes"/>
+	<rule ref="Generic.Commenting.Todo"/>
+	<rule ref="Generic.Commenting.Fixme"/>
+
+	<!-- The bootstrap declares one global function, which the sniff cannot vouch for
+	     without knowing the plugin's prefixes. -->
+	<rule ref="WordPress.NamingConventions.PrefixAllGlobals">
+		<properties>
+			<property name="prefixes" type="array">
+				<element value="wcat"/>
+				<element value="WC_Agent_Tools"/>
+				<element value="woocommerce_agent_tools"/>
+			</property>
+		</properties>
+	</rule>
+
+	<rule ref="WordPress.WP.I18n">
+		<properties>
+			<property name="text_domain" type="array">
+				<element value="woocommerce-agent-tools"/>
+			</property>
+		</properties>
+	</rule>
+
+	<!-- WooCommerce capabilities this plugin checks; the sniff knows only core's. -->
+	<rule ref="WordPress.WP.Capabilities">
+		<properties>
+			<property name="custom_capabilities" type="array">
+				<element value="manage_woocommerce"/>
+			</property>
+		</properties>
+	</rule>
+</ruleset>

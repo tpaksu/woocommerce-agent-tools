@@ -1,0 +1,20 @@
+includes:
+	- vendor/szepeviktor/phpstan-wordpress/extension.neon
+
+parameters:
+	level: 5
+	paths:
+		- woocommerce-agent-tools.php
+		- uninstall.php
+		- includes
+	bootstrapFiles:
+		- vendor/php-stubs/woocommerce-stubs/woocommerce-stubs.php
+	# The MCP Adapter is a hard dependency with no stub package, so without these every
+	# call on it resolves to `mixed` and analysis stops at the boundary.
+	scanFiles:
+		- stubs/mcp-adapter.php
+	ignoreErrors:
+		# WordPress polyfills both since 5.9 (wp-includes/compat.php), and WooCommerce
+		# core calls them directly, so they are available on every supported install.
+		- '#^Function str_starts_with not found\.$#'
+		- '#^Function str_ends_with not found\.$#'

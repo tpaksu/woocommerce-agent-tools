@@ -1,0 +1,54 @@
+{
+	"name": "woocommerce/woocommerce-agent-tools",
+	"description": "Compiles WordPress abilities from plugin REST routes, so an MCP agent sees what a WooCommerce store can actually do.",
+	"type": "wordpress-plugin",
+	"license": "GPL-3.0-or-later",
+	"require": {
+		"php": ">=7.4"
+	},
+	"require-dev": {
+		"dealerdirect/phpcodesniffer-composer-installer": "*",
+		"php-stubs/woocommerce-stubs": "*",
+		"phpstan/phpstan": "^2",
+		"szepeviktor/phpstan-wordpress": "^2",
+		"woocommerce/woocommerce-sniffs": "*",
+		"wp-coding-standards/wpcs": "^3"
+	},
+	"config": {
+		"allow-plugins": {
+			"dealerdirect/phpcodesniffer-composer-installer": true
+		},
+		"platform": {
+			"php": "7.4"
+		}
+	},
+	"scripts": {
+		"check-php": [
+			"./vendor/bin/phpcs --report-full --report-summary -s"
+		],
+		"check-php:fix": [
+			"./vendor/bin/phpcbf --report-full --report-summary"
+		],
+		"phpstan": [
+			"./vendor/bin/phpstan analyse --memory-limit=2G"
+		],
+		"build": [
+			"bash bin/build.sh"
+		]
+	},
+	"archive": {
+		"exclude": [
+			"/.*",
+			"/bin",
+			"/composer.json",
+			"/composer.lock",
+			"/node_modules",
+			"/phpcs.xml.dist",
+			"/phpstan.neon.dist",
+			"/stubs",
+			"/tests",
+			"/vendor",
+			"*.zip"
+		]
+	}
+}
