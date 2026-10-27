@@ -8,6 +8,9 @@
 	<!-- Analysis-only signatures for another plugin, deliberately mirroring its
 	     namespaces and never loaded at runtime. -->
 	<exclude-pattern>/stubs/</exclude-pattern>
+	<!-- The test harness deliberately declares WordPress's own function names in the global
+	     namespace, because that is what the code under test calls. Never loaded at runtime. -->
+	<exclude-pattern>/tests/bootstrap.php</exclude-pattern>
 	<arg name="extensions" value="php"/>
 	<arg name="basepath" value="."/>
 	<arg name="colors"/>
@@ -36,6 +39,15 @@
 	</rule>
 	<rule ref="WordPress.Files.FileName.NotHyphenatedLowercase">
 		<exclude-pattern>src/</exclude-pattern>
+	</rule>
+	<!-- tests/ is PSR-4-ish too, and a test's name is its documentation: a docblock per
+	     test method would restate the method name and nothing more. The rest of the
+	     standard still applies there. -->
+	<rule ref="WordPress.Files.FileName.NotHyphenatedLowercase">
+		<exclude-pattern>tests/</exclude-pattern>
+	</rule>
+	<rule ref="Squiz.Commenting.FunctionComment.Missing">
+		<exclude-pattern>tests/</exclude-pattern>
 	</rule>
 	<rule ref="Squiz.Classes.ClassFileName">
 		<include-pattern>src/</include-pattern>

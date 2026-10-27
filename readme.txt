@@ -25,7 +25,7 @@ Where a plugin author has written an ability by hand, theirs wins and the derive
 
 Writes are held until they have been stated. The first attempt at anything that is not read-only runs nothing: it returns a preview of exactly what the call would do, plus a single-use token bound to those exact arguments. The same arguments with that token run. This applies to every write on the store, including abilities WooCommerce and other plugins register, not only the ones this plugin derives.
 
-**This is a prototype for internal evaluation.** It works and it is linted. It is not hardened, not reviewed, and has no tests. See the FAQ for what that means in practice.
+**This is a prototype for internal evaluation.** It works, it is linted, and the confirmation gate's token lifecycle has unit tests. The rest is not hardened and has no tests of its own. See the FAQ for what that means in practice.
 
 == Installation ==
 
@@ -209,6 +209,7 @@ Deliberately deferred. None of it blocks evaluation; all of it would block shipp
 * Tweak - agents.md says what to do after the merchant finishes a task in wp-admin: refresh the tool list before concluding anything from it.
 * Tweak - agents.md explains the class of call whose route states no payload, what the refusal says instead, and what to do with the admin screen it usually names.
 * Tweak - Drop the parameter list from every tool description. It repeated `input_schema`, which get-ability-info returns in full, and named only the first ten parameters, so a tool taking twenty-three read as taking ten. Shortens what `discover-abilities` returns by 15.6%.
+* Dev - A unit test suite for the confirmation gate's token lifecycle, run with `composer test`. Twenty-three cases, each one a defect that reached a review round: a resent token, a restart with no token, a lost race, a storage failure that is not a race, an expired confirmation, a release after the call committed, and the preview naming the arguments an agent inferred for a route that declares none. The harness models WordPress transient semantics rather than booting WordPress, including the two that caused real bugs: `delete_transient()` ignores the timeout, and it reports whether a row was there. Every case was checked by reverting the fix it covers and confirming the suite goes red.
 * Dev - Move the classes to PSR-4 under `src/`, in the `WooCommerce\AgentTools` namespace, grouped by responsibility (`Route`, `Ability`, `Safety`, `Agent`). The build now ships Composer's autoloader instead of a hand-maintained list of twenty `require_once` lines, which was a silent fatal whenever a new class was forgotten.
 * Dev - Replace the static classes with constructor injection. Collaborators are passed in, `Plugin` is the only place that calls `new`, and the request-scoped state that lived in static properties now belongs to the object that owns it.
 * Dev - Class names change with the namespace: `WC_Agent_Tools_Gate` is now `WooCommerce\AgentTools\Safety\Gate`, and so on. The filters are unchanged, so anything hooking `woocommerce_agent_tools_*` keeps working.

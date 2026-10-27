@@ -12,7 +12,8 @@
 		"phpstan/phpstan": "^2",
 		"szepeviktor/phpstan-wordpress": "^2",
 		"woocommerce/woocommerce-sniffs": "*",
-		"wp-coding-standards/wpcs": "^3"
+		"wp-coding-standards/wpcs": "^3",
+		"phpunit/phpunit": "^9"
 	},
 	"autoload": {
 		"psr-4": {
@@ -37,6 +38,9 @@
 		"phpstan": [
 			"./vendor/bin/phpstan analyse --memory-limit=2G"
 		],
+		"test": [
+			"./vendor/bin/phpunit"
+		],
 		"build": [
 			"bash bin/build.sh"
 		]
@@ -50,6 +54,7 @@
 			"/node_modules",
 			"/phpcs.xml.dist",
 			"/phpstan.neon.dist",
+			"/phpunit.xml.dist",
 			"/stubs",
 			"/tests",
 			"/vendor",

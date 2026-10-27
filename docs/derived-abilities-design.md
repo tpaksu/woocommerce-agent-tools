@@ -484,7 +484,7 @@ Two results are worth keeping for the design rather than the plugin.
 
 Built since the first draft: the namespace allowlist and UI-plumbing exclusion list, the permission-strength predicate, ability-category mapping, the compiled cache and its fingerprint placement, and the label and description grammar. What remains:
 
-- **Tests**, starting with the gate's token lifecycle and the agent-traffic scoping, since those are where being wrong is worst.
+- **Tests** for everything except the gate's token lifecycle, which now has them. The agent-traffic scoping is the next one, since that is where being wrong is worst.
 - **A code review**, which nothing here has had.
 - Paging or filtering at the discovery meta-tool, upstream in the MCP Adapter.
 - A security review of credential redaction.
