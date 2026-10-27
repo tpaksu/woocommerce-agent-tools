@@ -1,10 +1,10 @@
 # Derived abilities: compiling MCP tools from plugin REST routes
 
 Status: design, implemented as the `woocommerce-agent-tools` plugin and exercised against a reference store
-by 24 isolated agent scenarios across three rounds. Not reviewed, and carrying no automated tests.
-Not approved for implementation in core.
+by 24 isolated agent scenarios across three rounds. The confirmation gate has tests; nothing here has had
+a human review. Not approved for implementation in core.
 
-Date: 2026-10-23. Last revised 2026-10-26, against plugin 0.4.0.
+Date: 2026-10-23. Last revised 2026-10-27, against plugin 0.5.1.
 
 The plugin that implements this lives beside the document, and the measurements throughout were taken from
 it. Where the two disagree, the plugin is the record: every figure here was read off a live store rather
@@ -369,7 +369,9 @@ A derived surface is large and uncurated, so the store needs somewhere to say ho
 
 That text ships as `agents.md` beside the plugin rather than as a string inside PHP, so whoever runs the store can read and edit it without touching code. A store-level `wp-content/agents.md` takes precedence and survives a plugin update, and `woocommerce_agent_tools_server_instructions` filters the result.
 
-It is advisory and bounds nothing; what it does is set defaults. Discover before guessing. Report a missing capability instead of reaching for the REST API or WP-CLI. Follow the ordered procedure when suggesting an extension: what is installed but inactive, then the curated feeds, then keyword search. Writes have no undo. A `wcat_secret:` value is opaque. A permission error is final.
+It opens by saying who the agent is on this connection: a store manager accountable to the merchant, explicitly not the shopping assistant a customer-facing surface would want. One connection, one audience, and the register follows from it. A preview goes to the merchant in their own words, with the tool's name and its field names treated as the agent's working material rather than text to read out.
+
+The rest is advisory and bounds nothing; what it does is set defaults. Discover before guessing. Report a missing capability instead of reaching for the REST API or WP-CLI. Follow the ordered procedure when suggesting an extension: what is installed but inactive, then the curated feeds, then keyword search. Writes have no undo. A `wcat_secret:` value is opaque. A permission error is final.
 
 One implementation note is worth keeping, because it is the same silent-failure shape as the rest of this document. A candidate file must count only once it has yielded text: breaking on `is_readable()` and then using whatever the read returned sent an empty `instructions` to every connecting agent when the file was gone or empty at read time, which fails silently in the one place the store is explaining itself.
 
@@ -402,17 +404,13 @@ Target quality is the hand-written example in `woocommerce-shipping/src/Abilitie
 
 ### Caching and invalidation
 
-Ability names are pinned to routes and may change when a plugin is updated, activated or deactivated. Between those events the compiled list is served from cache, and a manual refresh is available as both an admin action and a WP-CLI command.
+Ability names are pinned to routes and may change when a plugin is updated, activated or deactivated. Between those events the compiled list is served from a day-long transient.
 
-Validation happens on the same request that serves the tool list, in two parts, because the parts cost very differently:
+Validation happens on the same request that serves the tool list, through one fingerprint over the `active_plugins` option and the `Version` header of each plugin in it. Activation and deactivation come free from an autoloaded option; an update is caught by the header whichever way it arrived, so FTP and deploy-based updates need no hook and none is used.
 
-| Event | Detection | Latency |
-|---|---|---|
-| Activate or deactivate | hash of the `active_plugins` option, autoloaded and free to read | immediate, exact |
-| Update via the WordPress updater | `upgrader_process_complete` | immediate |
-| Update via FTP or a deploy | periodic version fingerprint, plus manual refresh | within the refresh window |
+The cost note that justified splitting this is worth keeping, because the implementation went the other way: reading every active plugin's version header on every request is not free, and `Cache::fingerprint()` does it unconditionally rather than leaning on `upgrader_process_complete` with a periodic fingerprint as backstop. The simpler mechanism has one failure mode instead of three, and no lifecycle hook that can miss. Whether that trade holds on a store with eighty plugins has not been measured.
 
-Reading every plugin's version header on every request is too expensive unconditionally, which is why updates lean on the hook with the fingerprint as backstop. Lifecycle hooks alone are insufficient, since FTP and deploy-based updates fire nothing.
+The manual refresh is `woocommerce/refresh-abilities`, an ability rather than an admin action or a WP-CLI command, because the party who needs it is the agent. It drops the transient and lets the next discovery rebuild; it deliberately does not rebuild in place, since a compile in the same request would walk the partial route table that forcing the full table is meant to avoid.
 
 When the fingerprint is stale, the compile request forces the full route table before `rest_api_init` by filtering `wc_rest_should_load_namespace` to true, which is how the "context known to be complete" requirement is met.
 
@@ -438,7 +436,7 @@ Closed since the first draft, and recorded because each failed silently: the `wc
 
 Still open:
 
-- **No tests and no review.** The largest gap by distance. A confirmation gate with no coverage of its token lifecycle (issue, spend, replay, expiry, a token offered for a different payload) is a liability, and none of the fixes above is protected against regression.
+- **No human review, and tests only around the gate.** 38 tests cover the confirmation token's lifecycle: issue, spend, replay, expiry, a token offered for a different payload or a different user, and the marker that outlives the token so a spend cannot be replayed after it would have expired. Nine rounds of automated review (CodeRabbit and Claude) each found a defect inside the previous fix, which is the argument for the coverage rather than against it. Everything outside `Safety\Confirm` is unprotected, and no human has read any of it.
 - **Recovered parameters have names but no shapes.** 49 tools publish 87 parameters found by reading the handler, typed as the permissive union because nothing static can say more. The tool's description names them. Closing this properly needs the owning plugin to declare them, which `woocommerce_agent_tools_route_args` exists for.
 - **38 writes declare no parameters of their own**, so the only property they publish is `confirm`. The description says so rather than letting the gap read as "takes no arguments", and the gate hands the call to the merchant rather than previewing a payload the route never stated.
 - **The discovery payload is unpaged.** It is the single biggest practical obstacle. Every agent across three test rounds spilled it to a file and queried it with a shell, 2 to 3 attempts each; a client without a shell cannot read the tool list at all. This is the MCP Adapter's meta-tool, not this design's, but the design's output is what makes it large.
@@ -448,6 +446,7 @@ Still open:
 - **"Read-only" does not mean local, and now it does not mean private either.** A derived read of a marketplace route makes an outbound call to woocommerce.com. The two search abilities go further: they send a term the agent composed. The instructions tell the agent to search the capability rather than the merchant's data, which is advisory like everything else in that text. A store that cannot accept the egress needs a filter to withhold them, and the handshake has no way to say that it did.
 - **No media ability.** `wp/v2/media` is behind the denied `wp` namespace, so an agent can write a product's description and never add its photo. A catalogue audit named this as its blocking gap. Admitting the namespace is a scope decision, not a defect.
 - **The operation word does not follow the `readonly` hook.** A query-by-POST route still derives as `-create`, and `POST /label/purchase/{order_id}` as `label-purchase-update`, because the rule only treats a literal segment *after* a path parameter as an action.
+- **The cache fingerprint cannot see configuration.** It hashes active plugins and their versions, so accepting an agreement or connecting an account changes the surface with an identical fingerprint either side: WooCommerce Shipping goes from two tools to several dozen on accepting its terms. `refresh-abilities` exists because nothing automatic can notice, which leaves the merchant's word that they finished the task as the only signal there is.
 - **The cache fingerprint ignores this plugin's own code.** It keys on active plugins and their version headers, so editing the compiler does not invalidate it. Correct for a release, a footgun in development, and it produced two wrong measurements before it was noticed.
 - **Deduplication accuracy** needs a target and a fixture suite.
 
@@ -485,7 +484,7 @@ Two results are worth keeping for the design rather than the plugin.
 Built since the first draft: the namespace allowlist and UI-plumbing exclusion list, the permission-strength predicate, ability-category mapping, the compiled cache and its fingerprint placement, and the label and description grammar. What remains:
 
 - **Tests** for everything except the gate's token lifecycle, which now has them. The agent-traffic scoping is the next one, since that is where being wrong is worst.
-- **A code review**, which nothing here has had.
+- **A human code review**, which nothing here has had. The automated rounds are not a substitute.
 - Paging or filtering at the discovery meta-tool, upstream in the MCP Adapter.
 - A security review of credential redaction.
 - Whether `destructive` should be `null` for writes whose destructiveness is unknown.
