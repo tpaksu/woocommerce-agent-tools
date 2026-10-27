@@ -161,8 +161,8 @@ final class Confirm {
 						. 'here can tell you what payload that route expects.%s What the tool says it does is: '
 						. '%s Relay all of that, and say that the route has not stated what it takes. Calls in this '
 						. 'class include accepting an agreement, connecting an account and moving money, so the '
-						. 'normal answer is for them to do it themselves %s. Name the tool you were about to '
-						. 'call. When they report it done, call '
+						. 'normal answer is for them to do it themselves %s. Say what they need to do there in '
+						. 'their words, not this plugin\'s. When they report it done, call '
 						. '`woocommerce/refresh-abilities` and discover again: finishing one of these usually '
 						. 'adds tools, and the list you are holding was built before they did it. Only if they '
 						. 'read all this and still ask you to make the call, send the same arguments plus '
@@ -180,11 +180,12 @@ final class Confirm {
 		return new WP_Error(
 			'wcat_confirmation_required',
 			sprintf(
-				'%s is not reversible, so it did not run. This is what it would do: %s with %s. '
-					. 'Put that in front of the merchant in those terms, including anything you inferred or '
-					. 'chose yourself, and wait for their answer. If they agree, call again with the same '
-					. 'arguments plus confirm="%s". If anything above is not what they asked for, do not call '
-					. 'again: tell them what does not match.',
+				'%s is not reversible, so it did not run. This is what it would do: %s with %s. Put '
+					. 'that in front of the merchant in their words rather than these, including anything you '
+					. 'inferred or chose yourself: what changes, what it changes, and every amount. Keep the '
+					. 'tool name and the field names to yourself unless they ask for them. Then wait for their '
+					. 'answer. If they agree, call again with the same arguments plus confirm="%s". If anything '
+					. 'above is not what they asked for, do not call again: tell them what does not match.',
 				$ability,
 				$what,
 				$this->describe( $input ),
@@ -313,7 +314,9 @@ final class Confirm {
 			if ( mb_strlen( $rendered, 'UTF-8' ) > 200 ) {
 				$rendered = mb_substr( $rendered, 0, 200, 'UTF-8' ) . '…';
 			}
-			$parts[] = $key . '=' . $rendered;
+			// `discount_type=percent` reads like code to the merchant this is shown to, and an
+			// agent relaying it verbatim passes that on. The value is untouched.
+			$parts[] = str_replace( '_', ' ', (string) $key ) . ': ' . $rendered;
 		}
 		return implode( ', ', $parts );
 	}

@@ -431,6 +431,14 @@ final class ConfirmTest extends TestCase {
 		$this->assertSame( 'wcat_confirmation_required', $after->get_error_code(), 'and no longer than that' );
 	}
 
+	public function test_an_underscored_field_name_is_not_shown_as_code(): void {
+		$refusal = $this->confirm->gate( 'test/write', 'Do a thing', array( 'discount_type' => 'percent' ) );
+
+		$message = $refusal->get_error_message();
+		$this->assertStringContainsString( 'discount type: percent', $message );
+		$this->assertStringNotContainsString( 'discount_type=', $message );
+	}
+
 	public function test_the_preview_states_the_arguments_it_would_send(): void {
 		$refusal = $this->confirm->gate(
 			'test/write',
@@ -445,9 +453,9 @@ final class ConfirmTest extends TestCase {
 
 		$message = $refusal->get_error_message();
 		$this->assertStringContainsString( 'Create a coupon', $message );
-		$this->assertStringContainsString( 'code=summer', $message );
-		$this->assertStringContainsString( 'force=false', $message, 'a false must not read as absent' );
-		$this->assertStringContainsString( 'parent=null', $message );
+		$this->assertStringContainsString( 'code: summer', $message );
+		$this->assertStringContainsString( 'force: false', $message, 'a false must not read as absent' );
+		$this->assertStringContainsString( 'parent: null', $message );
 	}
 
 	public function test_an_opaque_preview_names_the_arguments_the_agent_inferred(): void {
@@ -461,7 +469,7 @@ final class ConfirmTest extends TestCase {
 
 		$message = $refusal->get_error_message();
 		$this->assertStringContainsString( 'declares no parameters', $message );
-		$this->assertStringContainsString( 'accepted=true', $message, 'what the merchant approves must be visible' );
+		$this->assertStringContainsString( 'accepted: true', $message, 'what the merchant approves must be visible' );
 		$this->assertStringContainsString( 'https://example.test/wp-admin/', $message );
 		$this->assertSame( 'https://example.test/wp-admin/', $refusal->get_error_data()['complete_in_admin'] );
 	}

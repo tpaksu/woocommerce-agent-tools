@@ -53,9 +53,10 @@ Anything that is not read-only runs nothing on the first attempt:
 
 ```text
 woocommerce/coupons-create is not reversible, so it did not run. This is what it would do:
-Create coupons with code=summer-sale, discount_type=percent, amount=5. Put that in front of
-the merchant in those terms, including anything you inferred or chose yourself, and wait for
-their answer. If they agree, call again with the same arguments plus confirm="0bb0dba7...".
+Create coupons with code: SPRING, discount type: percent, amount: 10. Put that in
+front of the merchant in their words rather than these, including anything you
+inferred or chose yourself: what changes, what it changes, and every amount. Keep
+the tool name and the field names to yourself unless they ask for them. ...
 ```
 
 Read the arguments rather than the summary. The token is bound to those exact values, so what you approve is what runs, and a changed amount or a different order id produces a different token that has to be previewed again.

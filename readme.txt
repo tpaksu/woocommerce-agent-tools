@@ -64,9 +64,10 @@ Reads are the majority of the surface. Nothing is held, nothing is previewed.
 Anything that is not read-only runs nothing on the first attempt. It comes back with a statement of what the call would do and a single-use token:
 
     woocommerce/coupons-create is not reversible, so it did not run. This is what it would do:
-    Create coupons with code=summer-sale, discount_type=percent, amount=5. Put that in front of
-    the merchant in those terms, including anything you inferred or chose yourself, and wait for
-    their answer. If they agree, call again with the same arguments plus confirm="0bb0dba7...". If anything above is not what they asked for, do not call again: ...
+    Create coupons with code: SPRING, discount type: percent, amount: 10. Put that in
+    front of the merchant in their words rather than these, including anything you
+    inferred or chose yourself: what changes, what it changes, and every amount. Keep
+    the tool name and the field names to yourself unless they ask for them. ...
 
 Your agent is instructed to show you that sentence before going any further. Read the arguments, not the summary: the token is bound to those exact values, so what you approve is what runs, and a changed amount or a different order id produces a different token that has to be previewed again.
 
@@ -206,6 +207,7 @@ Deliberately deferred. None of it blocks evaluation; all of it would block shipp
 * Fix - A cache entry holding a fingerprint but no descriptors made the compiler skip loading the full route table and then compile against a partial one, emitting a fraction of the store's tools.
 * Fix - A tool whose route ran another ability stopped being recognised as internal traffic partway through, because the inner call reset a shared flag while the outer one was still running. The REST guard then began demanding a confirmation token for the rest of that outer call.
 * Fix - A route registering POST, PUT and PATCH against one callback compiled into two tools that called the same handler with the same parameters, leaving an agent no way to choose between them. The edit verbs on one handler now yield one tool, named after what the route does: a collection keeps `create`, an action route keeps its tail. A route registering POST and PUT as separate handlers keeps both, since those are different callbacks.
+* Tweak - The gate told the agent to put the preview in front of the merchant "in those terms", which meant reading them the tool name and the raw field names. It now asks for the same substance in the merchant's own words, and the preview renders `discount_type=percent` as `discount type: percent` so a verbatim relay is not code either.
 * Tweak - agents.md tells a connecting agent who it is on this connection: the merchant's store manager, talking in the store's terms, and explicitly not a shopping assistant, since the tools here run with the connected user's capabilities over every order and customer rather than one shopper's own.
 * Tweak - agents.md says what to do after the merchant finishes a task in wp-admin: refresh the tool list before concluding anything from it.
 * Tweak - agents.md explains the class of call whose route states no payload, what the refusal says instead, and what to do with the admin screen it usually names.
