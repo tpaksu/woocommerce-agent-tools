@@ -17,6 +17,10 @@ if ( ! defined( 'ABSPATH' ) ) {
 
 /**
  * The compiled surface, cached against a fingerprint of the active plugins and their versions.
+ *
+ * Which is all the fingerprint can see: accepting an agreement or connecting an account changes
+ * what a plugin registers without changing the plugin, so the list goes stale with no signal.
+ * `Agent\Surface` exists to let an agent drop it once the merchant says they have done that.
  */
 final class Cache {
 

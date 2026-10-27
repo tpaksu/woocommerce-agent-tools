@@ -29,6 +29,10 @@ if ( ! defined( 'ABSPATH' ) ) {
  * statement: an agent is free to send the token straight back. What it buys is that the
  * intent is on the record, in the agent's own words, before the money moves, and that a
  * client or a merchant reading along has a place to intervene.
+ *
+ * One confirmation authorises one call. A payload that has been confirmed is then refused for
+ * twice the token's lifetime, whether the token comes back or the agent starts over, because a
+ * client that times out and retries would otherwise refund twice.
  */
 final class Confirm {
 

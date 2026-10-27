@@ -96,7 +96,7 @@ Declared and required coincide for `WP_REST_Controller` subclasses, because `get
 
 The consequence is a documentation gap, not a capability gap. A write declaring nothing is still callable: `WP_Ability::validate_input()` runs `rest_validate_value_from_schema()`, which permits properties absent from `properties` unless `additionalProperties` is `false`, and the execute wrapper puts the whole input in the JSON body. Verified against `POST /wc-admin/plugins/activate`, which declares no args at all and reads `$request['plugins']` (`src/Admin/API/Plugins.php:357`).
 
-The gap is wider than the routes that declare nothing. Of 196 derived writes, 41 read parameters their route never declared, and `LabelPurchaseRESTController` is the instructive case: it declares two optional args and then requires seven more, so its tool looked documented and was not. Measured on the reference store, 53 tools are in that position across 93 parameters.
+The gap is wider than the routes that declare nothing. Of 196 derived writes, 41 read parameters their route never declared, and `LabelPurchaseRESTController` is the instructive case: it declares two optional args and then requires seven more, so its tool looked documented and was not. Measured on the reference store at the time, 53 tools were in that position across 93 parameters; see `readme.txt` for the current count.
 
 Those names are recoverable, because the handler body states them. Three patterns find them: a direct read off the request, an index into the decoded JSON body, and a list of names handed to a checker alongside the request, where a leading `?` marks the optional ones. Recovered names are published with the permissive type union and are never added to `required`: the names come from parsing source, and a false positive that rejected a working call would be worse than an undocumented one.
 
@@ -495,7 +495,7 @@ Built since the first draft: the namespace allowlist and UI-plumbing exclusion l
 
 Reference store on 2026-10-26: WordPress 7.1.3, WooCommerce 11.4.0-dev, MCP Adapter 0.7.1, Bookings 3.12.1, Gift Cards 2.9.1, Product Bundles 8.5.16, WooCommerce Shipping 2.4.3. WooCommerce AI is **not** installed, which is the main difference from the 2026-10-23 figures below it.
 
-The 0.5.0 edit-verb merge and the no-payload class moved several of these counts. The figures in the prose above are current; the tables below are as measured on the dates given.
+Every count in this document, in the prose as well as the tables, is a reading taken on the store and date named here. The 0.5.0 edit-verb merge and the no-payload class moved several of them, so where a figure matters to a reader it is kept current in `readme.txt` and `changelog.txt` instead.
 
 | Pipeline stage | Count |
 |---|---|

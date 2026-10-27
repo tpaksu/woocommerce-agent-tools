@@ -80,8 +80,9 @@ final class Factory {
 			$properties[ Confirm::FIELD ] = $this->confirm->property();
 			// Deliberately terse. The `confirm` property documents the protocol and the
 			// handshake explains it once for the whole server; spelling it out per tool cost
-			// 33,600 bytes across 168 descriptions, which is half of what `discover-abilities`
-			// returns, and that response had already grown past what a client will accept.
+			// around 34,000 bytes across the gated tools when it was measured, half of what
+			// `discover-abilities` returned, and that response had already grown past what a
+			// client will accept.
 			$description .= Confirm::GATE_NOTE;
 
 			if ( empty( $d['args'] ) ) {

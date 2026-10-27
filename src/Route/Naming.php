@@ -257,7 +257,7 @@ final class Naming {
 	 * store-wide-unique docblock summary when there is one.
 	 *
 	 * Deliberately omits the parameter names. They duplicate `input_schema`, which
-	 * get-ability-info returns, and cost 18,747 bytes across 306 descriptions.
+	 * get-ability-info returns, and cost 15,924 bytes, 15.6% of what discovery returned.
 	 *
 	 * @param string $method        Method.
 	 * @param string $resource_name Resource.
