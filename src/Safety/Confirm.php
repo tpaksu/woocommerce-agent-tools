@@ -92,6 +92,15 @@ final class Confirm {
 		unset( $input[ self::FIELD ] );
 
 		$expected = $this->token( $ability, $input );
+		if ( '' === $expected ) {
+			return new WP_Error(
+				'wcat_unidentifiable_payload',
+				'These arguments cannot be identified, so this call cannot be confirmed and did not '
+					. 'run. They are nested too deeply or hold bytes that are not valid text. Send a '
+					. 'simpler payload, or tell the merchant this tool cannot take what you have.',
+				array( 'status' => 400 )
+			);
+		}
 
 		if ( '' !== $supplied && hash_equals( $expected, $supplied ) ) {
 			$claim = $this->claim( $expected );
@@ -257,8 +266,17 @@ final class Confirm {
 	 */
 	private function token( string $ability, array $input ): string {
 		$this->sort_deep( $input );
+
+		$encoded = wp_json_encode( $input );
+		if ( ! is_string( $encoded ) ) {
+			// Past `json_encode`'s depth limit, or unrepairable. Casting the failure to a
+			// string hashed every such payload to one token, so a confirmation for any of
+			// them authorised all the others.
+			return '';
+		}
+
 		return substr(
-			hash_hmac( 'sha256', $ability . '|' . get_current_user_id() . '|' . (string) wp_json_encode( $input ), wp_salt( 'nonce' ) ),
+			hash_hmac( 'sha256', $ability . '|' . get_current_user_id() . '|' . $encoded, wp_salt( 'nonce' ) ),
 			0,
 			32
 		);

@@ -220,11 +220,20 @@ final class ConfirmTest extends TestCase {
 	 * A delete that fails with the row still present is a storage failure, not a race, and
 	 * treating it as spent locked the payload out over a call that never ran.
 	 */
-	public function test_claim_reports_dead_when_the_delete_itself_fails(): void {
+	public function test_a_storage_failure_does_not_lock_the_payload_out(): void {
 		$token                    = $this->preview( 'test/write', array( 'id' => 1 ) );
 		WPOptions::$undeletable[] = Confirm::PREFIX . $token;
 
-		$this->assertSame( 'dead', $this->claim( $token ) );
+		$refusal = $this->confirm->gate(
+			'test/write',
+			'Do a thing',
+			array(
+				'id'      => 1,
+				'confirm' => $token,
+			)
+		);
+
+		$this->assertSame( 'wcat_confirmation_required', $refusal->get_error_code(), 'not reported as already run' );
 		$this->assertFalse( $this->spent( $token ), 'its own marker is withdrawn' );
 	}
 
@@ -232,7 +241,7 @@ final class ConfirmTest extends TestCase {
 	 * The marker is written before the token stops being claimable. With the other order
 	 * there was a window where a restart re-armed a token it could then redeem.
 	 */
-	public function test_the_spend_is_recorded_before_the_token_becomes_unclaimable(): void {
+	public function test_a_lost_race_leaves_the_spend_recorded_and_the_token_gone(): void {
 		$token                          = $this->preview( 'test/write', array( 'id' => 1 ) );
 		WPOptions::$vanish_after_read[] = Confirm::PREFIX . $token;
 
@@ -352,6 +361,76 @@ final class ConfirmTest extends TestCase {
 		$this->assertSame( 'wcat_confirmation_required', $other->get_error_code() );
 	}
 
+	public function test_a_token_does_not_authorise_another_user(): void {
+		$token = $this->preview( 'test/write', array( 'id' => 1 ) );
+
+		WPOptions::$user_id = 2;
+		$refusal            = $this->confirm->gate(
+			'test/write',
+			'Do a thing',
+			array(
+				'id'      => 1,
+				'confirm' => $token,
+			)
+		);
+
+		$this->assertInstanceOf( WP_Error::class, $refusal );
+		$this->assertSame( 'wcat_confirmation_required', $refusal->get_error_code() );
+		$this->assertNotSame( $token, (string) $refusal->get_error_data()['confirm'], 'each user gets their own token' );
+	}
+
+	/**
+	 * Sorting only the top level would make a nested payload's key order change the token, so
+	 * a client that serialised an object differently could never confirm what it previewed.
+	 */
+	public function test_the_token_ignores_key_order_at_every_depth(): void {
+		$one = $this->preview(
+			'test/write',
+			array(
+				'line' => array(
+					'sku' => 'a',
+					'qty' => 2,
+				),
+			)
+		);
+		WPOptions::reset();
+		$two = $this->preview(
+			'test/write',
+			array(
+				'line' => array(
+					'qty' => 2,
+					'sku' => 'a',
+				),
+			)
+		);
+
+		$this->assertSame( $one, $two );
+	}
+
+	/**
+	 * The record of a spend outlives the token it spent, because the refusal and the docs both
+	 * promise the payload is held for ten minutes rather than for the token's own five.
+	 */
+	public function test_a_spend_is_remembered_after_its_token_would_have_expired(): void {
+		$token = $this->preview( 'test/write', array( 'id' => 1 ) );
+		$this->confirm->gate(
+			'test/write',
+			'Do a thing',
+			array(
+				'id'      => 1,
+				'confirm' => $token,
+			)
+		);
+
+		WPOptions::travel( Confirm::TTL + 1 );
+		$inside = $this->confirm->gate( 'test/write', 'Do a thing', array( 'id' => 1 ) );
+		$this->assertSame( 'wcat_confirmation_spent', $inside->get_error_code() );
+
+		WPOptions::travel( Confirm::TTL * 2 );
+		$after = $this->confirm->gate( 'test/write', 'Do a thing', array( 'id' => 1 ) );
+		$this->assertSame( 'wcat_confirmation_required', $after->get_error_code(), 'and no longer than that' );
+	}
+
 	public function test_the_preview_states_the_arguments_it_would_send(): void {
 		$refusal = $this->confirm->gate(
 			'test/write',
@@ -396,16 +475,121 @@ final class ConfirmTest extends TestCase {
 		$this->assertArrayNotHasKey( 'complete_in_admin', (array) $refusal->get_error_data() );
 	}
 
-	public function test_a_long_multibyte_value_leaves_the_message_valid_utf8(): void {
+	public function test_a_long_multibyte_value_is_truncated_without_breaking_the_message(): void {
 		$refusal = $this->confirm->gate( 'test/write', 'Do a thing', array( 'note' => str_repeat( 'あ', 300 ) ) );
 
 		$message = $refusal->get_error_message();
+		$this->assertStringContainsString( str_repeat( 'あ', 200 ) . '…', $message, 'capped at 200 characters' );
+		$this->assertStringNotContainsString( str_repeat( 'あ', 201 ), $message, 'and no further' );
 		$this->assertSame( 1, preg_match( '//u', $message ), 'truncation must not split a character' );
 		$this->assertNotFalse( wp_json_encode( $message ) );
 	}
 
-	public function test_only_writes_need_confirming(): void {
-		$this->assertTrue( $this->confirm->required( '/wc/v3/orders', 'POST', false ) );
-		$this->assertFalse( $this->confirm->required( '/wc/v3/orders', 'GET', true ) );
+	/**
+	 * Every write and no read, which is the whole of the docblock's claim. Two data points let
+	 * a predicate keyed on the method itself through, and that leaves PUT and PATCH ungated:
+	 * in WooCommerce those are how an order, a price and a coupon get changed.
+	 *
+	 * @dataProvider methods
+	 * @param string $method  HTTP method.
+	 * @param bool   $is_read Whether the compiler judged the call read-only.
+	 * @param bool   $gated   Whether it must be confirmed.
+	 */
+	public function test_every_write_needs_confirming_and_no_read_does( string $method, bool $is_read, bool $gated ): void {
+		$this->assertSame( $gated, $this->confirm->required( '/wc/v3/orders', $method, $is_read ) );
+	}
+
+	/**
+	 * Every method the compiler can hand the gate, with how it should be judged.
+	 *
+	 * @return array<string,array{0:string,1:bool,2:bool}>
+	 */
+	public function methods(): array {
+		return array(
+			'GET'     => array( 'GET', true, false ),
+			'HEAD'    => array( 'HEAD', true, false ),
+			'OPTIONS' => array( 'OPTIONS', true, false ),
+			'POST'    => array( 'POST', false, true ),
+			'PUT'     => array( 'PUT', false, true ),
+			'PATCH'   => array( 'PATCH', false, true ),
+			'DELETE'  => array( 'DELETE', false, true ),
+		);
+	}
+
+	public function test_the_gating_decision_is_filterable(): void {
+		add_filter(
+			'woocommerce_agent_tools_route_needs_confirmation',
+			function () {
+				return false;
+			}
+		);
+
+		$this->assertFalse(
+			$this->confirm->required( '/wc/v3/orders', 'POST', false ),
+			'the published filter must be consulted'
+		);
+	}
+
+	/**
+	 * The gate promises a lifetime in `expires_in` and arms the token separately, and nothing
+	 * tied the two together: it could advertise five minutes and arm for thirty seconds.
+	 */
+	public function test_a_token_lives_as_long_as_the_preview_said_it_would(): void {
+		$token = $this->preview( 'test/write', array( 'id' => 1 ) );
+
+		WPOptions::travel( Confirm::TTL - 1 );
+
+		$this->assertTrue(
+			$this->confirm->gate(
+				'test/write',
+				'Do a thing',
+				array(
+					'id'      => 1,
+					'confirm' => $token,
+				)
+			)
+		);
+	}
+
+	/**
+	 * A payload the encoder cannot represent cannot be told apart from another one, and
+	 * hashing the failure gave every such payload the same token.
+	 */
+	public function test_a_payload_that_cannot_be_identified_is_refused_outright(): void {
+		$deep = array( 'a' => 1 );
+		for ( $i = 0; $i < 600; $i++ ) {
+			$deep = array( 'nested' => $deep );
+		}
+
+		$refusal = $this->confirm->gate( 'test/write', 'Do a thing', $deep );
+
+		$this->assertInstanceOf( WP_Error::class, $refusal );
+		$this->assertSame( 'wcat_unidentifiable_payload', $refusal->get_error_code() );
+		$this->assertArrayNotHasKey( 'confirm', (array) $refusal->get_error_data() );
+	}
+
+	public function test_the_token_is_long_enough_to_be_unguessable(): void {
+		$token = $this->preview( 'test/write', array( 'id' => 1 ) );
+
+		$this->assertSame( 1, preg_match( '/^[0-9a-f]{32}$/', $token ) );
+	}
+
+	public function test_the_refusal_carries_the_arguments_a_client_can_read(): void {
+		$refusal = $this->confirm->gate(
+			'test/write',
+			'Do a thing',
+			array(
+				'id'   => 7,
+				'note' => 'x',
+			)
+		);
+
+		$this->assertSame(
+			array(
+				'id'   => 7,
+				'note' => 'x',
+			),
+			$refusal->get_error_data()['arguments_previewed']
+		);
 	}
 }

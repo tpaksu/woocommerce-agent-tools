@@ -7,6 +7,11 @@
  * deterministic, and it reproduces the two transient behaviours that caused real defects:
  * `delete_transient()` ignores the timeout, and it reports whether a row was there.
  *
+ * It models the database path, which is one of WordPress's two backends. With a persistent
+ * object cache `wp_cache_delete()` does respect expiry, and the liveness read catches an
+ * expired token before the delete either way, so the claimed/lost/dead decisions come out the
+ * same. Verified against wp-includes/option.php on WordPress 7.1.3 and no other version.
+ *
  * @package woocommerce-agent-tools
  */
 
@@ -28,6 +33,12 @@ final class WPOptions {
 	/** @var int */
 	public static $now = 1700000000;
 
+	/** @var int The connected user, which the token is bound to. */
+	public static $user_id = 1;
+
+	/** @var array<string,callable[]> */
+	public static $filters = array();
+
 	/** @var string[] Keys whose delete fails, to stand in for a storage failure. */
 	public static $undeletable = array();
 
@@ -42,6 +53,8 @@ final class WPOptions {
 	public static function reset(): void {
 		self::$options           = array();
 		self::$now               = 1700000000;
+		self::$user_id           = 1;
+		self::$filters           = array();
 		self::$undeletable       = array();
 		self::$vanish_after_read = array();
 	}
@@ -135,9 +148,13 @@ function set_transient( string $key, $value, int $ttl = 0 ): bool {
 	if ( $ttl > 0 ) {
 		WPOptions::$options[ '_transient_timeout_' . $key ] = WPOptions::$now + $ttl;
 	}
+	// `update_option()` reports false when the value is unchanged, and `set_transient()`
+	// passes that through.
+	$unchanged = array_key_exists( '_transient_' . $key, WPOptions::$options )
+		&& WPOptions::$options[ '_transient_' . $key ] === $value;
 	WPOptions::$options[ '_transient_' . $key ] = $value;
 
-	return true;
+	return ! $unchanged;
 }
 
 /**
@@ -151,13 +168,18 @@ function delete_transient( string $key ): bool {
 		return false;
 	}
 	$existed = array_key_exists( '_transient_' . $key, WPOptions::$options );
-	unset( WPOptions::$options[ '_transient_timeout_' . $key ], WPOptions::$options[ '_transient_' . $key ] );
+	unset( WPOptions::$options[ '_transient_' . $key ] );
+	// WordPress drops the timeout row only when the value row was there, so an orphan
+	// timeout can outlive its value until the daily cron.
+	if ( $existed ) {
+		unset( WPOptions::$options[ '_transient_timeout_' . $key ] );
+	}
 
 	return $existed;
 }
 
 function get_current_user_id(): int {
-	return 1;
+	return WPOptions::$user_id;
 }
 
 /**
@@ -173,7 +195,35 @@ function wp_salt( string $scheme = 'auth' ): string {
  * @return string|false
  */
 function wp_json_encode( $data, int $flags = 0 ) {
-	return json_encode( $data, $flags | JSON_UNESCAPED_UNICODE ); // phpcs:ignore WordPress.WP.AlternativeFunctions.json_encode_json_encode
+	$json = json_encode( $data, $flags ); // phpcs:ignore WordPress.WP.AlternativeFunctions.json_encode_json_encode
+	if ( false !== $json ) {
+		return $json;
+	}
+	// `_wp_json_sanity_check()` strips invalid UTF-8 and re-encodes, so two payloads that
+	// differ only in bad bytes come back identical. It gives up past the depth limit.
+	if ( JSON_ERROR_UTF8 !== json_last_error() ) {
+		return false;
+	}
+	array_walk_recursive(
+		$data,
+		function ( &$value ) {
+			if ( is_string( $value ) ) {
+				$value = preg_replace( '/[^\x00-\x7F]/', '?', $value );
+			}
+		}
+	);
+
+	return json_encode( $data, $flags ); // phpcs:ignore WordPress.WP.AlternativeFunctions.json_encode_json_encode
+}
+
+/**
+ * @param string   $hook     Hook.
+ * @param callable $callback Callback.
+ */
+function add_filter( string $hook, callable $callback ): bool {
+	WPOptions::$filters[ $hook ][] = $callback;
+
+	return true;
 }
 
 /**
@@ -182,5 +232,10 @@ function wp_json_encode( $data, int $flags = 0 ) {
  * @return mixed
  */
 function apply_filters( string $hook, $value ) {
-	return $value;
+	$args = array_slice( func_get_args(), 1 );
+	foreach ( WPOptions::$filters[ $hook ] ?? array() as $callback ) {
+		$args[0] = $callback( ...$args );
+	}
+
+	return $args[0];
 }

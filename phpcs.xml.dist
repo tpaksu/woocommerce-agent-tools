@@ -40,12 +40,9 @@
 	<rule ref="WordPress.Files.FileName.NotHyphenatedLowercase">
 		<exclude-pattern>src/</exclude-pattern>
 	</rule>
-	<!-- tests/ is PSR-4-ish too, and a test's name is its documentation: a docblock per
-	     test method would restate the method name and nothing more. The rest of the
-	     standard still applies there. -->
-	<rule ref="WordPress.Files.FileName.NotHyphenatedLowercase">
-		<exclude-pattern>tests/</exclude-pattern>
-	</rule>
+	<!-- A test's name is its documentation: a docblock per test method would restate the
+	     method name and nothing more. The rest of the standard still applies there, and the
+	     file-name sniffs need no exclusion because WPCS skips them for a TestCase subclass. -->
 	<rule ref="Squiz.Commenting.FunctionComment.Missing">
 		<exclude-pattern>tests/</exclude-pattern>
 	</rule>

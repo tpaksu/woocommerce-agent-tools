@@ -5,6 +5,7 @@
 	beStrictAboutTestsThatDoNotTestAnything="true"
 	failOnWarning="true"
 	failOnRisky="true"
+	convertDeprecationsToExceptions="true"
 >
 	<testsuites>
 		<testsuite name="unit">
