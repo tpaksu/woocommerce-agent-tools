@@ -29,7 +29,7 @@ Both plugin dependencies are declared in the plugin header, so WordPress will no
 
 Download the zip from [Releases](https://github.com/tpaksu/woocommerce-agent-tools/releases), upload it under **Plugins, Add New, Upload Plugin**, and activate.
 
-Then go to **Tools, Agent Tools**. That screen is the whole setup: it shows the MCP endpoint this store serves, issues an application password on a button, and hands you ready-made configuration for Claude Code, Claude Desktop, Cursor and VS Code with the credential already filled in. It also reports how many tools the store currently exposes, and what the agent will be able to do as the user you issued the password to — which is the part worth reading before connecting anything.
+Then go to **Tools, Agent Tools**. That screen is the whole setup. It opens with what the store exposes — how many tools an agent can see, how many change something and are held until stated, and how many come back to you instead of running — and then walks two steps: who the agent acts as, stating what it inherits from that user before you issue the credential, and then connecting your client, with ready-made configuration for Claude Code, Claude Desktop, Cursor, VS Code or anything else.
 
 Restart your MCP client afterwards, because clients read their server list at session start.
 

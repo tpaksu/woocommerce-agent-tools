@@ -3,7 +3,7 @@
  * Plugin Name: WooCommerce Agent Tools
  * Plugin URI: https://github.com/woocommerce/woocommerce
  * Description: Compiles WordPress abilities from plugin REST routes, so an MCP agent sees what the store can actually do. Prototype for internal evaluation.
- * Version: 0.5.0
+ * Version: 0.5.1
  * Author: WooCommerce
  * Author URI: https://woocommerce.com/
  *

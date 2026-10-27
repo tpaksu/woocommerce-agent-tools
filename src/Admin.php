@@ -56,6 +56,25 @@ final class Admin {
 	public function init(): void {
 		add_action( 'admin_menu', array( $this, 'register_page' ) );
 		add_action( 'admin_post_' . self::ACTION, array( $this, 'handle_create_password' ) );
+		add_action( 'admin_enqueue_scripts', array( $this, 'enqueue' ) );
+	}
+
+	/**
+	 * The screen's stylesheet, on this screen only.
+	 *
+	 * @param string $hook_suffix Current admin page.
+	 */
+	public function enqueue( string $hook_suffix ): void {
+		if ( 'tools_page_' . self::PAGE_SLUG !== $hook_suffix ) {
+			return;
+		}
+		$file = dirname( __DIR__ ) . '/assets/admin.css';
+		wp_enqueue_style(
+			'woocommerce-agent-tools-admin',
+			plugins_url( 'assets/admin.css', dirname( __DIR__ ) . '/woocommerce-agent-tools.php' ),
+			array(),
+			is_readable( $file ) ? (string) filemtime( $file ) : null
+		);
 	}
 
 	/**
@@ -186,30 +205,74 @@ final class Admin {
 			}
 		}
 
-		echo '<div class="wrap">';
+		echo '<div class="wrap wcat">';
 		printf( '<h1>%s</h1>', esc_html__( 'Agent Tools', 'woocommerce-agent-tools' ) );
-
 		printf(
-			'<p>%s</p>',
-			esc_html(
-				sprintf(
-					/* translators: %d: number of abilities an agent can discover. */
-					_n(
-						'This store exposes %d tool to a connected agent, compiled from the REST routes of WooCommerce and the extensions installed beside it.',
-						'This store exposes %d tools to a connected agent, compiled from the REST routes of WooCommerce and the extensions installed beside it.',
-						$this->visible_tool_count(),
-						'woocommerce-agent-tools'
-					),
-					$this->visible_tool_count()
-				)
-			)
+			'<p class="wcat-lede">%s</p>',
+			esc_html__( 'What a connected agent can do with this store, compiled from the REST routes of WooCommerce and the extensions installed beside it.', 'woocommerce-agent-tools' )
 		);
 
 		$this->render_notice( $notice );
-		$this->render_endpoint( $endpoint );
-		$this->render_credential_section( $user, $endpoint, $available );
-		$this->render_capability_warning( $user );
+		$this->render_stats();
 
+		echo '<div class="wcat-card wcat-step">';
+		printf( '<h2>%s</h2>', esc_html__( 'Choose who the agent acts as', 'woocommerce-agent-tools' ) );
+		// Before the button, not after it: this is the decision the warning is about.
+		$this->render_capability_warning( $user );
+		$this->render_credential_section( $user, $endpoint, $available );
+		echo '</div>';
+
+		echo '<div class="wcat-card wcat-step">';
+		printf( '<h2>%s</h2>', esc_html__( 'Connect your client', 'woocommerce-agent-tools' ) );
+		$this->render_clients( $user, $endpoint );
+		echo '</div>';
+
+		echo '<div class="wcat-card">';
+		$this->render_endpoint( $endpoint );
+		echo '</div>';
+
+		echo '</div>';
+	}
+
+	/**
+	 * What this store exposes, before any of the setup below it.
+	 */
+	private function render_stats(): void {
+		$total = 0;
+		$held  = 0;
+		$yours = 0;
+		if ( function_exists( 'wp_get_abilities' ) && class_exists( '\WP\MCP\Abilities\McpAbilityExposure' ) ) {
+			foreach ( wp_get_abilities() as $ability ) {
+				if ( ! \WP\MCP\Abilities\McpAbilityExposure::is_public( $ability ) ) {
+					continue;
+				}
+				++$total;
+				$meta = (array) $ability->get_meta();
+				if ( true !== ( ( (array) ( $meta['annotations'] ?? array() ) )['readonly'] ?? null ) ) {
+					++$held;
+				}
+				if ( ! empty( $meta['opaque'] ) ) {
+					++$yours;
+				}
+			}
+		}
+
+		echo '<div class="wcat-stats">';
+		printf(
+			'<div class="wcat-stat"><b>%s</b><span>%s</span></div>',
+			esc_html( number_format_i18n( $total ) ),
+			esc_html__( 'tools an agent can see', 'woocommerce-agent-tools' )
+		);
+		printf(
+			'<div class="wcat-stat wcat-stat--held"><b>%s</b><span>%s</span></div>',
+			esc_html( number_format_i18n( $held ) ),
+			esc_html__( 'change something, and are held until stated', 'woocommerce-agent-tools' )
+		);
+		printf(
+			'<div class="wcat-stat wcat-stat--you"><b>%s</b><span>%s</span></div>',
+			esc_html( number_format_i18n( $yours ) ),
+			esc_html__( 'come back to you instead of running', 'woocommerce-agent-tools' )
+		);
 		echo '</div>';
 	}
 
@@ -221,13 +284,14 @@ final class Admin {
 	 * @param string $snippet The configuration itself.
 	 */
 	private function render_client_config( string $label, string $where, string $snippet ): void {
-		printf( '<h3>%s</h3>', esc_html( $label ) );
-		printf( '<p>%s</p>', esc_html( $where ) );
+		printf( '<details><summary>%s</summary>', esc_html( $label ) );
+		printf( '<p class="wcat-where">%s</p>', esc_html( $where ) );
 		printf(
-			'<p><textarea class="large-text code" rows="%d" readonly onclick="this.select()">%s</textarea></p>',
+			'<p><textarea class="large-text wcat-code" rows="%d" readonly onclick="this.select()">%s</textarea></p>',
 			(int) min( 16, max( 3, substr_count( $snippet, "\n" ) + 2 ) ),
 			esc_textarea( $snippet )
 		);
+		echo '</details>';
 	}
 
 	/**
@@ -240,65 +304,26 @@ final class Admin {
 	}
 
 	/**
-	 * Notices for the outcomes of the create action.
+	 * The configuration for each client, one at a time.
 	 *
-	 * @param string $notice Notice code.
+	 * Only has anything to show right after a credential is issued, because the blocks
+	 * carry it and the password is never stored in a readable form.
+	 *
+	 * @param WP_User $user     Current user.
+	 * @param string  $endpoint Endpoint URL.
 	 */
-	private function render_notice( string $notice ): void {
-		if ( 'failed' === $notice ) {
+	private function render_clients( WP_User $user, string $endpoint ): void {
+		if ( null === $this->new_credential ) {
 			printf(
-				'<div class="notice notice-error"><p>%s</p></div>',
-				esc_html__( 'The application password could not be created.', 'woocommerce-agent-tools' )
+				'<p>%s</p>',
+				esc_html__( 'Issue a credential above and the configuration for your client appears here, filled in. It is shown once.', 'woocommerce-agent-tools' )
 			);
+			return;
 		}
-		if ( 'unavailable' === $notice ) {
-			printf(
-				'<div class="notice notice-error"><p>%s</p></div>',
-				esc_html__( 'Application passwords are not available for your account. They require a site reachable over HTTPS, unless the site is local.', 'woocommerce-agent-tools' )
-			);
-		}
-	}
 
-	/**
-	 * The endpoint, which is the same on every store and needs no configuration.
-	 *
-	 * @param string $endpoint Endpoint URL.
-	 */
-	private function render_endpoint( string $endpoint ): void {
-		printf( '<h2>%s</h2>', esc_html__( 'Endpoint', 'woocommerce-agent-tools' ) );
-		printf(
-			'<p>%s</p>',
-			esc_html__( 'Point your MCP client at this address. The MCP Adapter serves it; there is nothing to configure.', 'woocommerce-agent-tools' )
-		);
-		printf(
-			'<p><input type="text" class="large-text code" readonly onclick="this.select()" value="%s" /></p>',
-			esc_attr( $endpoint )
-		);
-	}
+		$auth = base64_encode( $user->user_login . ':' . $this->new_credential['password'] ); // phpcs:ignore WordPress.PHP.DiscouragedPHPFunctions.obfuscation_base64_encode -- Builds an HTTP Basic credential, not obfuscation.
 
-	/**
-	 * The authentication step: issue an application password, then show the config once.
-	 *
-	 * @param WP_User $user      Current user.
-	 * @param string  $endpoint  Endpoint URL.
-	 * @param bool    $available Whether this user may create an application password.
-	 */
-	private function render_credential_section( WP_User $user, string $endpoint, bool $available ): void {
-		printf( '<h2>%s</h2>', esc_html__( 'Authentication', 'woocommerce-agent-tools' ) );
-
-		if ( null !== $this->new_credential ) {
-			$auth = base64_encode( $user->user_login . ':' . $this->new_credential['password'] ); // phpcs:ignore WordPress.PHP.DiscouragedPHPFunctions.obfuscation_base64_encode -- Builds an HTTP Basic credential, not obfuscation.
-
-			printf(
-				'<div class="notice notice-success"><p><strong>%s</strong> %s</p></div>',
-				esc_html__( 'Application password created.', 'woocommerce-agent-tools' ),
-				esc_html__( 'It is shown only once, because only a hash of it is stored.', 'woocommerce-agent-tools' )
-			);
-			printf(
-				'<p><input type="text" class="large-text code" readonly onclick="this.select()" value="%s" /></p>',
-				esc_attr( $this->new_credential['password'] )
-			);
-
+		echo '<div class="wcat-clients">';
 			$this->render_client_config(
 				__( 'Claude Code', 'woocommerce-agent-tools' ),
 				__( 'Run this in a terminal.', 'woocommerce-agent-tools' ),
@@ -369,6 +394,71 @@ final class Admin {
 				'<p><em>%s</em></p>',
 				esc_html__( 'Most clients read their configuration at start-up, so restart yours after adding this.', 'woocommerce-agent-tools' )
 			);
+		echo '</div>';
+	}
+
+	/**
+	 * Notices for the outcomes of the create action.
+	 *
+	 * @param string $notice Notice code.
+	 */
+	private function render_notice( string $notice ): void {
+		if ( 'failed' === $notice ) {
+			printf(
+				'<div class="notice notice-error"><p>%s</p></div>',
+				esc_html__( 'The application password could not be created.', 'woocommerce-agent-tools' )
+			);
+		}
+		if ( 'unavailable' === $notice ) {
+			printf(
+				'<div class="notice notice-error"><p>%s</p></div>',
+				esc_html__( 'Application passwords are not available for your account. They require a site reachable over HTTPS, unless the site is local.', 'woocommerce-agent-tools' )
+			);
+		}
+	}
+
+	/**
+	 * The endpoint, which is the same on every store and needs no configuration.
+	 *
+	 * @param string $endpoint Endpoint URL.
+	 */
+	private function render_endpoint( string $endpoint ): void {
+		printf( '<h2>%s</h2>', esc_html__( 'Endpoint', 'woocommerce-agent-tools' ) );
+		printf(
+			'<p>%s</p>',
+			esc_html__( 'Point your MCP client at this address. The MCP Adapter serves it; there is nothing to configure.', 'woocommerce-agent-tools' )
+		);
+		printf(
+			'<p><input type="text" class="large-text wcat-code" readonly onclick="this.select()" value="%s" /></p>',
+			esc_attr( $endpoint )
+		);
+		printf(
+			'<p>%s</p>',
+			esc_html__( 'To change how the agent behaves, edit agents.md in this plugin, or place your own at wp-content/agents.md. Its text is sent in the MCP handshake and yours survives an update.', 'woocommerce-agent-tools' )
+		);
+	}
+
+	/**
+	 * The authentication step: issue an application password, then show the config once.
+	 *
+	 * @param WP_User $user      Current user.
+	 * @param string  $endpoint  Endpoint URL.
+	 * @param bool    $available Whether this user may create an application password.
+	 */
+	private function render_credential_section( WP_User $user, string $endpoint, bool $available ): void {
+		if ( null !== $this->new_credential ) {
+			$auth = base64_encode( $user->user_login . ':' . $this->new_credential['password'] ); // phpcs:ignore WordPress.PHP.DiscouragedPHPFunctions.obfuscation_base64_encode -- Builds an HTTP Basic credential, not obfuscation.
+
+			printf(
+				'<div class="wcat-once"><p><strong>%s</strong> %s</p></div>',
+				esc_html__( 'Application password created.', 'woocommerce-agent-tools' ),
+				esc_html__( 'It is shown only once, because only a hash of it is stored.', 'woocommerce-agent-tools' )
+			);
+			printf(
+				'<p><input type="text" class="large-text wcat-code" readonly onclick="this.select()" value="%s" /></p>',
+				esc_attr( $this->new_credential['password'] )
+			);
+
 			return;
 		}
 
@@ -425,8 +515,6 @@ final class Admin {
 	 * @param WP_User $user Current user.
 	 */
 	private function render_capability_warning( WP_User $user ): void {
-		printf( '<h2>%s</h2>', esc_html__( 'What the agent will be able to do', 'woocommerce-agent-tools' ) );
-
 		printf(
 			'<p>%s</p>',
 			esc_html(
@@ -450,7 +538,7 @@ final class Admin {
 
 		if ( ! empty( $risky ) ) {
 			printf(
-				'<div class="notice notice-warning inline"><p>%s</p><p>%s</p></div>',
+				'<div class="wcat-warn"><p>%s</p><p>%s</p></div>',
 				esc_html(
 					sprintf(
 						/* translators: %s: comma-separated list of capabilities. */
@@ -461,10 +549,5 @@ final class Admin {
 				esc_html__( 'Consider creating a separate user with a narrower role, such as Shop manager, and generating the application password there instead.', 'woocommerce-agent-tools' )
 			);
 		}
-
-		printf(
-			'<p>%s</p>',
-			esc_html__( 'To tell the agent how to behave, edit agents.md in this plugin, or place your own at wp-content/agents.md. Its text is sent in the MCP handshake.', 'woocommerce-agent-tools' )
-		);
 	}
 }

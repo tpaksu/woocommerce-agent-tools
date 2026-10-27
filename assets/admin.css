@@ -1,0 +1,165 @@
+/* Tools, Agent Tools. Palette and metrics follow wp-admin so this reads as part of it. */
+
+.wcat {
+	max-width: 940px;
+	counter-reset: wcat-step;
+}
+
+.wcat h1 {
+	margin-bottom: 4px;
+}
+
+.wcat-lede {
+	max-width: 70ch;
+	margin: 0 0 20px;
+	color: #50575e;
+	font-size: 14px;
+}
+
+/* The glance: what this store exposes, before any of the setup. */
+
+.wcat-stats {
+	display: flex;
+	flex-wrap: wrap;
+	gap: 12px;
+	margin: 0 0 24px;
+}
+
+.wcat-stat {
+	flex: 1 1 160px;
+	padding: 14px 16px;
+	background: #fff;
+	border: 1px solid #c3c4c7;
+	border-left: 3px solid #2271b1;
+	border-radius: 3px;
+}
+
+.wcat-stat--held {
+	border-left-color: #dba617;
+}
+
+.wcat-stat--you {
+	border-left-color: #d63638;
+}
+
+.wcat-stat b {
+	display: block;
+	color: #1d2327;
+	font-size: 23px;
+	font-weight: 500;
+	line-height: 1.2;
+}
+
+.wcat-stat span {
+	display: block;
+	margin-top: 2px;
+	color: #646970;
+	font-size: 12px;
+}
+
+/* Each stage of setup is its own panel, numbered in the order you do it. */
+
+.wcat-card {
+	margin: 0 0 20px;
+	padding: 2px 20px 18px;
+	background: #fff;
+	border: 1px solid #c3c4c7;
+	border-radius: 3px;
+}
+
+.wcat-card h2 {
+	font-size: 14px;
+	line-height: 1.4;
+}
+
+.wcat-card p {
+	max-width: 72ch;
+	color: #50575e;
+}
+
+.wcat-step > h2::before {
+	counter-increment: wcat-step;
+	content: counter(wcat-step);
+	display: inline-block;
+	width: 22px;
+	height: 22px;
+	margin-right: 8px;
+	background: #2271b1;
+	border-radius: 50%;
+	color: #fff;
+	font-size: 12px;
+	line-height: 22px;
+	text-align: center;
+	vertical-align: 2px;
+}
+
+/* Anything meant to be copied, styled as the code it is. */
+
+.wcat-code {
+	padding: 10px 12px;
+	background: #f6f7f7;
+	border: 1px solid #c3c4c7;
+	border-radius: 3px;
+	color: #1d2327;
+	font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+	font-size: 12px;
+	line-height: 1.6;
+	resize: none;
+}
+
+/* One client at a time, rather than five stacked blocks. */
+
+.wcat-clients {
+	margin-top: 8px;
+	border-top: 1px solid #f0f0f1;
+}
+
+.wcat-clients details {
+	border-bottom: 1px solid #f0f0f1;
+}
+
+.wcat-clients summary {
+	padding: 10px 2px;
+	color: #2271b1;
+	cursor: pointer;
+	font-weight: 600;
+}
+
+.wcat-clients summary:hover {
+	color: #135e96;
+}
+
+.wcat-clients details[open] summary {
+	color: #1d2327;
+}
+
+.wcat-clients .wcat-where {
+	margin: 0 0 8px;
+	color: #646970;
+	font-size: 13px;
+}
+
+/* What the agent inherits. Stated where the decision is made, not after it. */
+
+.wcat-warn {
+	margin: 12px 0;
+	padding: 12px 14px;
+	background: #fcf9e8;
+	border-left: 4px solid #dba617;
+}
+
+.wcat-warn p {
+	margin: 0 0 6px;
+	max-width: 72ch;
+}
+
+.wcat-warn p:last-child {
+	margin-bottom: 0;
+}
+
+.wcat-once {
+	margin: 12px 0;
+	padding: 12px 14px;
+	background: #edfaef;
+	border-left: 4px solid #00a32a;
+}

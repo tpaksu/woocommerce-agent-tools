@@ -5,7 +5,7 @@ Tags: woocommerce, mcp, abilities, agent, ai
 Requires at least: 6.9
 Requires PHP: 7.4
 Tested up to: 7.1
-Stable tag: 0.5.0
+Stable tag: 0.5.1
 WC requires at least: 10.0
 WC tested up to: 11.4
 License: GNU General Public License v3.0
@@ -36,7 +36,7 @@ Writes are held until they have been stated. The first attempt at anything that 
 
 WooCommerce, the MCP Adapter and the required WordPress version are all declared in the plugin header, so WordPress will not activate this plugin until they are in place.
 
-Step four is the whole setup. It shows the endpoint this store serves, creates an application password on a button, and hands you the client configuration with the credential already filled in, for Claude Code, Claude Desktop, Cursor, VS Code and any other MCP client. It also reports how many tools this store exposes right now, and what the agent will be able to do as the user you created the password for, which is the part worth reading before you connect anything.
+Step four is the whole setup. The screen opens with what this store exposes: how many tools an agent can see, how many of them change something and are held until stated, and how many come back to you instead of running. Below that are two steps. The first states what the agent will inherit from the user you are about to issue a credential for, which is the part worth reading before you issue one, and then issues it. The second hands you ready-made configuration for Claude Code, Claude Desktop, Cursor, VS Code or any other MCP client, with the credential already filled in.
 
 Restart your client afterwards, because MCP servers are read at session start.
 
@@ -194,6 +194,11 @@ Deliberately deferred. None of it blocks evaluation; all of it would block shipp
 
 == Changelog ==
 
+= 0.5.1 - 2026-10-27 =
+* Tweak - Rework the Tools screen. It leads with what the store exposes, how much of that changes something, and how much comes back to the merchant; the two stages of setup are numbered panels rather than three equal headings; the clients collapse so you read one; and the warning about what the agent inherits sits above the button that issues the credential rather than below it, which is where the decision it describes is made.
+* Tweak - The Tools screen hands you ready-made configuration for Claude Desktop, Cursor and VS Code as well as Claude Code, each with the file it belongs in. Every client but one was previously left to work out the transport and headers for itself.
+* Tweak - The gate told the agent to put the preview in front of the merchant "in those terms", which meant reading them the tool name and the raw field names. It now asks for the same substance in the merchant's own words, and the preview renders `discount_type=percent` as `discount type: percent` so a verbatim relay is not code either.
+
 = 0.5.0 - 2026-10-27 =
 * Add - `refresh-abilities`, which drops the compiled tool list so the next discovery rebuilds it. The list is cached against the active plugins and their versions, and accepting an agreement or connecting an account changes neither: WooCommerce Shipping goes from two tools to several dozen on accepting its terms, with an identical fingerprint either side, so the stale list was served for up to a day with nothing able to notice. The refusal for a call handed to the merchant now tells the agent to refresh and discover again once they report it done, and says that an unchanged list is not evidence they failed until it has been refreshed.
 * Add - A write whose route declares no parameters is handed to the merchant instead of previewed. The gate cannot say what such a route expects, so the refusal names an admin screen, relays what the tool says it does, and lists anything the agent inferred and is sending anyway. That class is where accepting a terms of service, connecting a payment or shipping account and triggering a deposit all sit. The token still works for a merchant who reads the refusal and asks the agent to proceed.
@@ -207,8 +212,6 @@ Deliberately deferred. None of it blocks evaluation; all of it would block shipp
 * Fix - A cache entry holding a fingerprint but no descriptors made the compiler skip loading the full route table and then compile against a partial one, emitting a fraction of the store's tools.
 * Fix - A tool whose route ran another ability stopped being recognised as internal traffic partway through, because the inner call reset a shared flag while the outer one was still running. The REST guard then began demanding a confirmation token for the rest of that outer call.
 * Fix - A route registering POST, PUT and PATCH against one callback compiled into two tools that called the same handler with the same parameters, leaving an agent no way to choose between them. The edit verbs on one handler now yield one tool, named after what the route does: a collection keeps `create`, an action route keeps its tail. A route registering POST and PUT as separate handlers keeps both, since those are different callbacks.
-* Tweak - The Tools screen hands you ready-made configuration for Claude Desktop, Cursor and VS Code as well as Claude Code, each with the file it belongs in. Every client but one was previously left to work out the transport and headers for itself.
-* Tweak - The gate told the agent to put the preview in front of the merchant "in those terms", which meant reading them the tool name and the raw field names. It now asks for the same substance in the merchant's own words, and the preview renders `discount_type=percent` as `discount type: percent` so a verbatim relay is not code either.
 * Tweak - agents.md tells a connecting agent who it is on this connection: the merchant's store manager, talking in the store's terms, and explicitly not a shopping assistant, since the tools here run with the connected user's capabilities over every order and customer rather than one shopper's own.
 * Tweak - agents.md says what to do after the merchant finishes a task in wp-admin: refresh the tool list before concluding anything from it.
 * Tweak - agents.md explains the class of call whose route states no payload, what the refusal says instead, and what to do with the admin screen it usually names.
