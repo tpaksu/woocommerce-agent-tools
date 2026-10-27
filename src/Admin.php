@@ -214,6 +214,32 @@ final class Admin {
 	}
 
 	/**
+	 * One client's configuration: what it is, where it goes, and the block to paste.
+	 *
+	 * @param string $label   Client name.
+	 * @param string $where   Where the snippet goes.
+	 * @param string $snippet The configuration itself.
+	 */
+	private function render_client_config( string $label, string $where, string $snippet ): void {
+		printf( '<h3>%s</h3>', esc_html( $label ) );
+		printf( '<p>%s</p>', esc_html( $where ) );
+		printf(
+			'<p><textarea class="large-text code" rows="%d" readonly onclick="this.select()">%s</textarea></p>',
+			(int) min( 16, max( 3, substr_count( $snippet, "\n" ) + 2 ) ),
+			esc_textarea( $snippet )
+		);
+	}
+
+	/**
+	 * A configuration block as the JSON these clients expect.
+	 *
+	 * @param array<string,mixed> $config Configuration.
+	 */
+	private function json_config( array $config ): string {
+		return (string) wp_json_encode( $config, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES );
+	}
+
+	/**
 	 * Notices for the outcomes of the create action.
 	 *
 	 * @param string $notice Notice code.
@@ -273,31 +299,71 @@ final class Admin {
 				esc_attr( $this->new_credential['password'] )
 			);
 
-			printf( '<h3>%s</h3>', esc_html__( 'Claude Code', 'woocommerce-agent-tools' ) );
-			printf(
-				'<p><textarea class="large-text code" rows="4" readonly onclick="this.select()">%s</textarea></p>',
-				esc_textarea(
-					sprintf(
-						"claude mcp add --transport http woo-store %s \\\n  --header \"Authorization: Basic %s\"",
-						$endpoint,
-						$auth
+			$this->render_client_config(
+				__( 'Claude Code', 'woocommerce-agent-tools' ),
+				__( 'Run this in a terminal.', 'woocommerce-agent-tools' ),
+				sprintf(
+					"claude mcp add --transport http woo-store %s \\\n  --header \"Authorization: Basic %s\"",
+					$endpoint,
+					$auth
+				)
+			);
+
+			// A local-only client needs a stdio proxy to reach an HTTP server with a header.
+			$this->render_client_config(
+				__( 'Claude Desktop', 'woocommerce-agent-tools' ),
+				__( 'Add to claude_desktop_config.json, which Settings, Developer, Edit Config opens. Needs Node installed, and a restart afterwards.', 'woocommerce-agent-tools' ),
+				$this->json_config(
+					array(
+						'mcpServers' => array(
+							'woo-store' => array(
+								'command' => 'npx',
+								'args'    => array( '-y', 'mcp-remote', $endpoint, '--header', 'Authorization: Basic ' . $auth ),
+							),
+						),
 					)
 				)
 			);
 
-			printf( '<h3>%s</h3>', esc_html__( 'Any other MCP client', 'woocommerce-agent-tools' ) );
-			printf(
-				'<p>%s</p>',
-				esc_html__( 'Use HTTP transport against the endpoint above, with these headers:', 'woocommerce-agent-tools' )
-			);
-			printf(
-				'<p><textarea class="large-text code" rows="3" readonly onclick="this.select()">%s</textarea></p>',
-				esc_textarea(
-					sprintf(
-						"Authorization: Basic %s\nMCP-Protocol-Version: 2025-06-18",
-						$auth
+			$this->render_client_config(
+				__( 'Cursor', 'woocommerce-agent-tools' ),
+				__( 'Add to .cursor/mcp.json in your project, or ~/.cursor/mcp.json for every project.', 'woocommerce-agent-tools' ),
+				$this->json_config(
+					array(
+						'mcpServers' => array(
+							'woo-store' => array(
+								'url'     => $endpoint,
+								'headers' => array( 'Authorization' => 'Basic ' . $auth ),
+							),
+						),
 					)
 				)
+			);
+
+			$this->render_client_config(
+				__( 'VS Code', 'woocommerce-agent-tools' ),
+				__( 'Add to .vscode/mcp.json in your workspace.', 'woocommerce-agent-tools' ),
+				$this->json_config(
+					array(
+						'servers' => array(
+							'woo-store' => array(
+								'type'    => 'http',
+								'url'     => $endpoint,
+								'headers' => array( 'Authorization' => 'Basic ' . $auth ),
+							),
+						),
+					)
+				)
+			);
+
+			$this->render_client_config(
+				__( 'Any other MCP client', 'woocommerce-agent-tools' ),
+				sprintf(
+					/* translators: %s: the MCP endpoint URL. */
+					__( 'Use streamable HTTP transport against %s, with these headers.', 'woocommerce-agent-tools' ),
+					$endpoint
+				),
+				sprintf( "Authorization: Basic %s\nMCP-Protocol-Version: 2025-06-18", $auth )
 			);
 			printf(
 				'<p><em>%s</em></p>',

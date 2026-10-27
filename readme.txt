@@ -36,7 +36,7 @@ Writes are held until they have been stated. The first attempt at anything that 
 
 WooCommerce, the MCP Adapter and the required WordPress version are all declared in the plugin header, so WordPress will not activate this plugin until they are in place.
 
-Step four is the whole setup. It shows the endpoint this store serves, creates an application password on a button, and hands you the client configuration with the credential already filled in, for Claude Code and for any other MCP client. It also reports how many tools this store exposes right now, and what the agent will be able to do as the user you created the password for, which is the part worth reading before you connect anything.
+Step four is the whole setup. It shows the endpoint this store serves, creates an application password on a button, and hands you the client configuration with the credential already filled in, for Claude Code, Claude Desktop, Cursor, VS Code and any other MCP client. It also reports how many tools this store exposes right now, and what the agent will be able to do as the user you created the password for, which is the part worth reading before you connect anything.
 
 Restart your client afterwards, because MCP servers are read at session start.
 
@@ -207,6 +207,7 @@ Deliberately deferred. None of it blocks evaluation; all of it would block shipp
 * Fix - A cache entry holding a fingerprint but no descriptors made the compiler skip loading the full route table and then compile against a partial one, emitting a fraction of the store's tools.
 * Fix - A tool whose route ran another ability stopped being recognised as internal traffic partway through, because the inner call reset a shared flag while the outer one was still running. The REST guard then began demanding a confirmation token for the rest of that outer call.
 * Fix - A route registering POST, PUT and PATCH against one callback compiled into two tools that called the same handler with the same parameters, leaving an agent no way to choose between them. The edit verbs on one handler now yield one tool, named after what the route does: a collection keeps `create`, an action route keeps its tail. A route registering POST and PUT as separate handlers keeps both, since those are different callbacks.
+* Tweak - The Tools screen hands you ready-made configuration for Claude Desktop, Cursor and VS Code as well as Claude Code, each with the file it belongs in. Every client but one was previously left to work out the transport and headers for itself.
 * Tweak - The gate told the agent to put the preview in front of the merchant "in those terms", which meant reading them the tool name and the raw field names. It now asks for the same substance in the merchant's own words, and the preview renders `discount_type=percent` as `discount type: percent` so a verbatim relay is not code either.
 * Tweak - agents.md tells a connecting agent who it is on this connection: the merchant's store manager, talking in the store's terms, and explicitly not a shopping assistant, since the tools here run with the connected user's capabilities over every order and customer rather than one shopper's own.
 * Tweak - agents.md says what to do after the merchant finishes a task in wp-admin: refresh the tool list before concluding anything from it.
