@@ -7,6 +7,10 @@
 
 declare( strict_types=1 );
 
+namespace WooCommerce\AgentTools\Route;
+
+use WP_REST_Server;
+
 if ( ! defined( 'ABSPATH' ) ) {
 	exit;
 }
@@ -14,14 +18,30 @@ if ( ! defined( 'ABSPATH' ) ) {
 /**
  * Turns a route and method into an ability name, label and description.
  */
-final class WC_Agent_Tools_Naming {
+final class Naming {
+
+	/**
+	 * Route ownership lookup.
+	 *
+	 * @var Attribution
+	 */
+	private $attribution;
+
+	/**
+	 * Wire the collaborators this class calls.
+	 *
+	 * @param Attribution $attribution Route ownership lookup.
+	 */
+	public function __construct( Attribution $attribution ) {
+		$this->attribution = $attribution;
+	}
 
 	/**
 	 * Collapse an operation word into a class.
 	 *
 	 * @param string $word Word.
 	 */
-	public static function op_class( string $word ): string {
+	public function op_class( string $word ): string {
 		$word = strtolower( $word );
 		$map  = array(
 			// Fetching one record by id is not the same capability as querying a collection.
@@ -50,11 +70,11 @@ final class WC_Agent_Tools_Naming {
 	 *
 	 * @param string $resource_name Resource name.
 	 */
-	public static function resource_key( string $resource_name ): string {
+	public function resource_key( string $resource_name ): string {
 		$split = preg_split( '/[-_\s]+/', strtolower( $resource_name ) );
 		$words = array_filter( is_array( $split ) ? $split : array() );
 		$words = array_map(
-			static function ( $w ) {
+			function ( $w ) {
 				return rtrim( $w, 's' );
 			},
 			$words
@@ -70,7 +90,7 @@ final class WC_Agent_Tools_Naming {
 	 * @param string[] $namespaces Registered namespaces.
 	 * @return array<string,bool>
 	 */
-	public static function latest_namespaces( array $namespaces ): array {
+	public function latest_namespaces( array $namespaces ): array {
 		$best = array();
 		$keep = array();
 		foreach ( $namespaces as $ns ) {
@@ -95,47 +115,87 @@ final class WC_Agent_Tools_Naming {
 	 * WP_REST_Server::EDITABLE registers POST, PUT and PATCH against one callback, which is
 	 * one operation, not three.
 	 *
-	 * @param string   $route   Route.
-	 * @param string[] $methods Methods on this handler.
+	 * @param string   $route         Route.
+	 * @param string[] $methods       Methods on this handler.
+	 * @param bool     $route_has_get Whether any handler on this route serves GET.
 	 * @return array<string,string> operation => chosen method
 	 */
-	public static function operations( string $route, array $methods ): array {
+	public function operations( string $route, array $methods, bool $route_has_get = false ): array {
 		$rank = array(
 			'PUT'   => 3,
 			'PATCH' => 2,
 			'POST'  => 1,
 		);
+		$edit = '';
 		$out  = array();
 		foreach ( $methods as $method ) {
 			if ( 'HEAD' === $method ) {
 				continue;
 			}
-			$op = self::operation( $route, (string) $method );
-			if ( ! isset( $out[ $op ] ) ) {
-				$out[ $op ] = (string) $method;
+			// One callback serves every method listed here, so the edit verbs are one operation.
+			// GET and DELETE are not: a different capability, and a different safety class.
+			if ( isset( $rank[ $method ] ) ) {
+				if ( '' === $edit || $rank[ $method ] > $rank[ $edit ] ) {
+					$edit = (string) $method;
+				}
 				continue;
 			}
-			if ( ( $rank[ $method ] ?? 0 ) > ( $rank[ $out[ $op ] ] ?? 0 ) ) {
-				$out[ $op ] = (string) $method;
+			$out[ $this->operation( $route, (string) $method, $route_has_get ) ] = (string) $method;
+		}
+
+		if ( '' !== $edit ) {
+			// POST represents the merge whenever the handler serves it, so the surviving name
+			// is the one that says what the route does: `create` on a collection, the tail on
+			// an action route, `update` on an id. Ranking by verb instead kept `update` and
+			// lost all three, and dispatched a POST route as PUT.
+			if ( in_array( 'POST', $methods, true ) ) {
+				$edit = 'POST';
+			}
+			$op = $this->operation( $route, $edit, $route_has_get );
+			// Only GET and DELETE can be in `$out` here, and neither shares an op with an edit
+			// verb on any route in WooCommerce. Refuse to overwrite one rather than assume it.
+			if ( ! isset( $out[ $op ] ) ) {
+				$out[ $op ] = $edit;
 			}
 		}
 		return $out;
 	}
 
 	/**
+	 * Whether this is an action route: a literal tail after a path parameter, such as
+	 * `/reports/(?P<type>[a-z]+)/export`, which is named after the tail rather than the verb.
+	 *
+	 * A GET on the same route means the tail is a nested collection instead, so POST creates a
+	 * child and the verb is the name. Without that test `/orders/(?P<id>\d+)/refunds` compiled
+	 * to `orders-refunds-refunds` rather than `orders-refunds-create`.
+	 *
+	 * @param string $route         Route.
+	 * @param bool   $route_has_get Whether any handler on this route serves GET.
+	 */
+	private function is_action_route( string $route, bool $route_has_get ): bool {
+		if ( $route_has_get ) {
+			return false;
+		}
+		$clean = rtrim( $route, '/' );
+		$last  = (string) substr( $clean, (int) strrpos( $clean, '/' ) + 1 );
+
+		return false === strpos( $last, '(?P<' ) && false !== strpos( $clean, '(?P<' );
+	}
+
+	/**
 	 * Operation name for a route and method.
 	 *
-	 * @param string $route  Route.
-	 * @param string $method Method.
+	 * @param string $route         Route.
+	 * @param string $method        Method.
+	 * @param bool   $route_has_get Whether any handler on this route serves GET.
 	 */
-	private static function operation( string $route, string $method ): string {
+	private function operation( string $route, string $method, bool $route_has_get ): string {
 		$clean = rtrim( $route, '/' );
 		$last  = (string) substr( $clean, (int) strrpos( $clean, '/' ) + 1 );
 		$is_id = false !== strpos( $last, '(?P<' );
 
-		// An action route: a literal tail after a path parameter.
-		if ( ! $is_id && false !== strpos( $clean, '(?P<' ) && 'POST' === $method ) {
-			return self::slugify( $last );
+		if ( 'POST' === $method && $this->is_action_route( $route, $route_has_get ) ) {
+			return $this->slugify( $last );
 		}
 
 		switch ( $method ) {
@@ -159,7 +219,7 @@ final class WC_Agent_Tools_Naming {
 	 * @param string $route     Route.
 	 * @param string $route_namespace Route namespace.
 	 */
-	public static function resource_of( string $route, string $route_namespace ): string {
+	public function resource_of( string $route, string $route_namespace ): string {
 		$path  = trim( (string) preg_replace( '#\(\?P<[^>]+>[^)]*\)#', '', $route ), '/' );
 		$path  = (string) preg_replace( '#^' . preg_quote( $route_namespace, '#' ) . '#', '', $path );
 		$parts = array_filter( explode( '/', trim( str_replace( '\\', '', $path ), '/' ) ) );
@@ -173,7 +233,7 @@ final class WC_Agent_Tools_Naming {
 	 * @param string $resource_name Resource name.
 	 * @param string $op       Operation.
 	 */
-	public static function label( string $method, string $resource_name, string $op ): string {
+	public function label( string $method, string $resource_name, string $op ): string {
 		$verbs = array(
 			'GET'    => 'Get',
 			'POST'   => 'Create',
@@ -193,17 +253,19 @@ final class WC_Agent_Tools_Naming {
 	}
 
 	/**
-	 * Tier-one composed description: method verb, resource, schema title,
-	 * a store-wide-unique docblock summary when there is one, and the parameter names.
+	 * Tier-one composed description: method verb, resource, schema title, and a
+	 * store-wide-unique docblock summary when there is one.
 	 *
-	 * @param string              $method   Method.
-	 * @param string              $resource_name Resource.
-	 * @param string              $title    Schema title.
-	 * @param string              $op       Operation.
-	 * @param string              $summary  Docblock summary.
-	 * @param array<string,mixed> $args     Schema args.
+	 * Deliberately omits the parameter names. They duplicate `input_schema`, which
+	 * get-ability-info returns, and cost 18,747 bytes across 306 descriptions.
+	 *
+	 * @param string $method        Method.
+	 * @param string $resource_name Resource.
+	 * @param string $title         Schema title.
+	 * @param string $op            Operation.
+	 * @param string $summary       Docblock summary.
 	 */
-	public static function description( string $method, string $resource_name, string $title, string $op, string $summary, array $args ): string {
+	public function description( string $method, string $resource_name, string $title, string $op, string $summary ): string {
 		$verbs = array(
 			'GET'    => 'Retrieve',
 			'POST'   => 'Create',
@@ -218,7 +280,7 @@ final class WC_Agent_Tools_Naming {
 			$object .= ' (' . $title . ')';
 		}
 
-		if ( '' !== $summary && WC_Agent_Tools_Attribution::summary_is_unique( $summary ) ) {
+		if ( '' !== $summary && $this->attribution->summary_is_unique( $summary ) ) {
 			$out = rtrim( $summary, '.' ) . '.';
 		} elseif ( ! in_array( $op, array( 'list', 'get', 'create', 'update', 'delete' ), true ) ) {
 			$out = ucfirst( str_replace( '-', ' ', $op ) ) . ' for ' . trim( $object ) . '.';
@@ -226,19 +288,6 @@ final class WC_Agent_Tools_Naming {
 			$out = $verb . ' ' . trim( $object ) . '.';
 		}
 
-		$boring = WC_Agent_Tools_Config::BOILERPLATE_ARGS;
-		$names  = array();
-		foreach ( $args as $key => $spec ) {
-			if ( in_array( $key, $boring, true ) ) {
-				continue;
-			}
-			if ( ! empty( $spec['description'] ) ) {
-				$names[] = $key;
-			}
-		}
-		if ( $names ) {
-			$out .= ' Parameters: ' . implode( ', ', array_slice( $names, 0, 10 ) ) . '.';
-		}
 		return $out;
 	}
 
@@ -247,17 +296,19 @@ final class WC_Agent_Tools_Naming {
 	 *
 	 * @param string $value Value.
 	 */
-	public static function slugify( string $value ): string {
+	public function slugify( string $value ): string {
 		$value = strtolower( (string) preg_replace( '/[^a-zA-Z0-9]+/', '-', $value ) );
 		return trim( (string) preg_replace( '/-+/', '-', $value ), '-' );
-	}   /**
-		 * The named placeholders a route pattern fills from the path, so a body schema does not
-		 * also advertise them.
-		 *
-		 * @param string $route Route pattern.
-		 * @return string[]
-		 */
-	public static function url_param_specs( string $route ): array {
+	}
+
+	/**
+	 * The named placeholders a route pattern fills from the path, so a body schema does not
+	 * also advertise them.
+	 *
+	 * @param string $route Route pattern.
+	 * @return string[]
+	 */
+	public function url_param_specs( string $route ): array {
 		if ( ! preg_match_all( '#\(\?P<([^>]+)>([^)]*)\)#', $route, $matches, PREG_SET_ORDER ) ) {
 			return array();
 		}
@@ -275,7 +326,7 @@ final class WC_Agent_Tools_Naming {
 	 * @param string $route Route pattern.
 	 * @return string[]
 	 */
-	public static function url_params( string $route ): array {
+	public function url_params( string $route ): array {
 		if ( ! preg_match_all( '/\(\?P<([a-z0-9_]+)>/i', $route, $matches ) ) {
 			return array();
 		}

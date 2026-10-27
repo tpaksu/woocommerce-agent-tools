@@ -6,15 +6,14 @@ parameters:
 	paths:
 		- woocommerce-agent-tools.php
 		- uninstall.php
-		- includes
+		- src
 	bootstrapFiles:
 		- vendor/php-stubs/woocommerce-stubs/woocommerce-stubs.php
 	# The MCP Adapter is a hard dependency with no stub package, so without these every
 	# call on it resolves to `mixed` and analysis stops at the boundary.
 	scanFiles:
 		- stubs/mcp-adapter.php
-	ignoreErrors:
-		# WordPress polyfills both since 5.9 (wp-includes/compat.php), and WooCommerce
-		# core calls them directly, so they are available on every supported install.
-		- '#^Function str_starts_with not found\.$#'
-		- '#^Function str_ends_with not found\.$#'
+		# WordPress polyfills both in wp-includes/compat.php, but the WP stub package
+		# ships only the core API. Stubbed rather than ignored, so PHPStan knows the
+		# return type and checks the arguments.
+		- stubs/wordpress-polyfills.php

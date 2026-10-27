@@ -7,6 +7,11 @@
 
 declare( strict_types=1 );
 
+namespace WooCommerce\AgentTools\Route;
+
+use WooCommerce\AgentTools\Config;
+use Throwable;
+
 if ( ! defined( 'ABSPATH' ) ) {
 	exit;
 }
@@ -21,7 +26,7 @@ if ( ! defined( 'ABSPATH' ) ) {
  * keeps a boolean `required` on a child, which in JSON Schema belongs on the parent as a list.
  * So normalise every level.
  */
-final class WC_Agent_Tools_Schema {
+final class Schema {
 
 	/**
 	 * JSON Schema keywords worth publishing. Anything else in a REST arg is WordPress's.
@@ -59,7 +64,7 @@ final class WC_Agent_Tools_Schema {
 	 * @param array<string,mixed> $args Handler args.
 	 * @return array{properties:array<string,mixed>,required:string[]}
 	 */
-	public static function from_args( array $args ): array {
+	public function from_args( array $args ): array {
 		$properties = array();
 		$required   = array();
 
@@ -68,7 +73,7 @@ final class WC_Agent_Tools_Schema {
 				continue;
 			}
 			$name                = (string) $key;
-			$properties[ $name ] = self::normalize( $spec );
+			$properties[ $name ] = $this->normalize( $spec );
 			if ( ! empty( $spec['required'] ) ) {
 				$required[] = $name;
 			}
@@ -92,7 +97,7 @@ final class WC_Agent_Tools_Schema {
 	 * @param string[]            $url_params Names already supplied by the route path.
 	 * @return array{properties:array<string,mixed>,undeclared:string[]}
 	 */
-	public static function with_discovered( array $properties, array $discovered, array $url_params ): array {
+	public function with_discovered( array $properties, array $discovered, array $url_params ): array {
 		$undeclared = array();
 
 		$known = array_map( 'strtolower', array_merge( array_keys( $properties ), $url_params ) );
@@ -103,7 +108,7 @@ final class WC_Agent_Tools_Schema {
 				continue;
 			}
 			$properties[ $name ] = array(
-				'type'        => WC_Agent_Tools_Config::ANY_TYPE,
+				'type'        => Config::ANY_TYPE,
 				'description' => $handler_requires
 					? 'Required by the handler. This route does not declare it, so its type and shape are unknown here.'
 					: 'Read by the handler. This route does not declare it, so its type and shape are unknown here.',
@@ -130,7 +135,7 @@ final class WC_Agent_Tools_Schema {
 	 * @param array<string,string> $specs      Placeholder name => its pattern.
 	 * @return array{properties:array<string,mixed>,required:string[]}
 	 */
-	public static function with_path_params( array $properties, array $required, array $specs ): array {
+	public function with_path_params( array $properties, array $required, array $specs ): array {
 		foreach ( $specs as $name => $pattern ) {
 			if ( ! isset( $properties[ $name ] ) ) {
 				$properties[ $name ] = array(
@@ -155,16 +160,16 @@ final class WC_Agent_Tools_Schema {
 	 * @param array<string,mixed> $spec A REST arg or a nested schema.
 	 * @return array<string,mixed>
 	 */
-	public static function normalize( array $spec ): array {
+	public function normalize( array $spec ): array {
 		$out = array_intersect_key( $spec, array_flip( self::KEEP ) );
 
 		// An undeclared type is not a string. Saying so rejected every structured value a
 		// route was willing to accept. A `type` that is not a name, or a list of names, is
 		// not a type either: Bookings declares one as a whole nested schema.
-		$out['type'] = self::type_or_any( $out['type'] ?? null );
+		$out['type'] = $this->type_or_any( $out['type'] ?? null );
 
 		if ( isset( $out['properties'] ) && is_array( $out['properties'] ) ) {
-			$nested            = self::from_args( $out['properties'] );
+			$nested            = $this->from_args( $out['properties'] );
 			$out['properties'] = $nested['properties'];
 			if ( ! empty( $nested['required'] ) ) {
 				$out['required'] = $nested['required'];
@@ -172,7 +177,7 @@ final class WC_Agent_Tools_Schema {
 		}
 
 		if ( isset( $out['items'] ) && is_array( $out['items'] ) ) {
-			$out['items'] = self::normalize( $out['items'] );
+			$out['items'] = $this->normalize( $out['items'] );
 		}
 
 		foreach ( array( 'oneOf', 'anyOf' ) as $branch ) {
@@ -181,8 +186,8 @@ final class WC_Agent_Tools_Schema {
 			}
 			$out[ $branch ] = array_values(
 				array_map(
-					static function ( $alternative ) {
-						return is_array( $alternative ) ? self::normalize( $alternative ) : $alternative;
+					function ( $alternative ) {
+						return is_array( $alternative ) ? $this->normalize( $alternative ) : $alternative;
 					},
 					$out[ $branch ]
 				)
@@ -190,7 +195,7 @@ final class WC_Agent_Tools_Schema {
 		}
 
 		if ( isset( $out['patternProperties'] ) && is_array( $out['patternProperties'] ) ) {
-			$out['patternProperties'] = self::from_args( $out['patternProperties'] )['properties'];
+			$out['patternProperties'] = $this->from_args( $out['patternProperties'] )['properties'];
 		}
 
 		return $out;
@@ -202,16 +207,16 @@ final class WC_Agent_Tools_Schema {
 	 * @param mixed $type Whatever the route put in `type`.
 	 * @return string|string[]
 	 */
-	private static function type_or_any( $type ) {
-		if ( is_string( $type ) && in_array( $type, WC_Agent_Tools_Config::ANY_TYPE, true ) ) {
+	private function type_or_any( $type ) {
+		if ( is_string( $type ) && in_array( $type, Config::ANY_TYPE, true ) ) {
 			return $type;
 		}
 		if ( is_array( $type ) ) {
 			$names = array_values(
 				array_filter(
 					$type,
-					static function ( $candidate ) {
-						return is_string( $candidate ) && in_array( $candidate, WC_Agent_Tools_Config::ANY_TYPE, true );
+					function ( $candidate ) {
+						return is_string( $candidate ) && in_array( $candidate, Config::ANY_TYPE, true );
 					}
 				)
 			);
@@ -219,7 +224,7 @@ final class WC_Agent_Tools_Schema {
 				return 1 === count( $names ) ? $names[0] : $names;
 			}
 		}
-		return WC_Agent_Tools_Config::ANY_TYPE;
+		return Config::ANY_TYPE;
 	}
 
 	/**
@@ -227,7 +232,7 @@ final class WC_Agent_Tools_Schema {
 	 *
 	 * @param array<string,mixed> $options Route options.
 	 */
-	public static function schema_title( array $options ): string {
+	public function schema_title( array $options ): string {
 		if ( ! isset( $options['schema'] ) || ! is_callable( $options['schema'] ) ) {
 			return '';
 		}

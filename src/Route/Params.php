@@ -7,6 +7,12 @@
 
 declare( strict_types=1 );
 
+namespace WooCommerce\AgentTools\Route;
+
+use WooCommerce\AgentTools\Config;
+use ReflectionMethod;
+use Throwable;
+
 if ( ! defined( 'ABSPATH' ) ) {
 	exit;
 }
@@ -22,14 +28,14 @@ if ( ! defined( 'ABSPATH' ) ) {
  * The handler body names them, so read it. This yields names, never types, and never marks a
  * parameter required: a false positive here would reject a call that works today.
  */
-final class WC_Agent_Tools_Params {
+final class Params {
 
 	/**
 	 * Handler file contents, keyed by path, for the life of one compile.
 	 *
 	 * @var array<string,string[]>
 	 */
-	private static $files = array();
+	private $files = array();
 
 	/**
 	 * Parameter names a handler reads, mapped to whether the handler treats them as required.
@@ -37,8 +43,8 @@ final class WC_Agent_Tools_Params {
 	 * @param callable|array<int,mixed>|string|null $callback Route callback.
 	 * @return array<string,bool>
 	 */
-	public static function discover( $callback ): array {
-		$source = self::handler_source( $callback );
+	public function discover( $callback ): array {
+		$source = $this->handler_source( $callback );
 		if ( '' === $source ) {
 			return array();
 		}
@@ -78,7 +84,7 @@ final class WC_Agent_Tools_Params {
 		// lowercase form sent a caller to a parameter that does not exist.
 		foreach ( array_keys( $found ) as $name ) {
 			$lower = strtolower( (string) $name );
-			if ( in_array( $lower, WC_Agent_Tools_Config::BOILERPLATE_ARGS, true ) || 'id' === $lower ) {
+			if ( in_array( $lower, Config::BOILERPLATE_ARGS, true ) || 'id' === $lower ) {
 				unset( $found[ $name ] );
 			}
 		}
@@ -89,8 +95,8 @@ final class WC_Agent_Tools_Params {
 	/**
 	 * Forget the per-compile file cache.
 	 */
-	public static function reset(): void {
-		self::$files = array();
+	public function reset(): void {
+		$this->files = array();
 	}
 
 	/**
@@ -98,7 +104,7 @@ final class WC_Agent_Tools_Params {
 	 *
 	 * @param callable|array<int,mixed>|string|null $callback Route callback.
 	 */
-	private static function handler_source( $callback ): string {
+	private function handler_source( $callback ): string {
 		if ( ! is_array( $callback ) || 2 !== count( $callback ) || ! is_string( $callback[1] ) ) {
 			return '';
 		}
@@ -113,13 +119,13 @@ final class WC_Agent_Tools_Params {
 			if ( '' === $path ) {
 				return '';
 			}
-			if ( ! isset( self::$files[ $path ] ) ) {
+			if ( ! isset( $this->files[ $path ] ) ) {
 				$lines                = file( $path );
-				self::$files[ $path ] = is_array( $lines ) ? $lines : array();
+				$this->files[ $path ] = is_array( $lines ) ? $lines : array();
 			}
 			$start = $method->getStartLine() - 1;
 			$count = $method->getEndLine() - $method->getStartLine() + 1;
-			return implode( '', array_slice( self::$files[ $path ], $start, $count ) );
+			return implode( '', array_slice( $this->files[ $path ], $start, $count ) );
 		} catch ( Throwable $e ) {
 			return '';
 		}

@@ -7,6 +7,8 @@
 
 declare( strict_types=1 );
 
+namespace WooCommerce\AgentTools;
+
 if ( ! defined( 'ABSPATH' ) ) {
 	exit;
 }
@@ -14,13 +16,15 @@ if ( ! defined( 'ABSPATH' ) ) {
 /**
  * Policy data the compiler reads: which namespaces and routes to skip, which fields hold secrets, and the cache keys.
  */
-final class WC_Agent_Tools_Config {
+final class Config {
 
 	const CACHE_KEY = 'wcat_descriptors';
 
 	const CATEGORY = 'woocommerce-derived';
 
 	const DISCOVERY_CATEGORY = 'woocommerce-discovery';
+
+	const SURFACE_CATEGORY = 'woocommerce-surface';
 
 	const MARKETPLACE_SEARCH_URL = 'https://woocommerce.com/wp-json/wccom-extensions/1.0/search';
 
@@ -144,12 +148,6 @@ final class WC_Agent_Tools_Config {
 	);
 
 	/**
-	 * Parameters every REST collection carries. They say nothing about what a route
-	 * accepts, so they do not count towards a route declaring its own inputs.
-	 *
-	 * @var string[]
-	 */
-	/**
 	 * The type of a property whose type a route never stated. Declaring the union rather
 	 * than omitting `type` matters: WordPress's validator emits an "Undefined array key
 	 * type" warning on every call for a property without one.
@@ -158,5 +156,11 @@ final class WC_Agent_Tools_Config {
 	 */
 	const ANY_TYPE = array( 'string', 'number', 'integer', 'boolean', 'array', 'object', 'null' );
 
+	/**
+	 * Parameters every REST collection carries. They say nothing about what a route
+	 * accepts, so they do not count towards a route declaring its own inputs.
+	 *
+	 * @var string[]
+	 */
 	const BOILERPLATE_ARGS = array( 'context', 'page', 'per_page', 'offset', 'order', 'orderby', '_fields', '_links', '_embed' );
 }

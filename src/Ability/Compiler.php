@@ -7,6 +7,16 @@
 
 declare( strict_types=1 );
 
+namespace WooCommerce\AgentTools\Ability;
+
+use WooCommerce\AgentTools\Config;
+use WooCommerce\AgentTools\Route\Attribution;
+use WooCommerce\AgentTools\Route\Naming;
+use WooCommerce\AgentTools\Route\Params;
+use WooCommerce\AgentTools\Route\Policy;
+use WooCommerce\AgentTools\Route\Schema;
+use WP_REST_Server;
+
 if ( ! defined( 'ABSPATH' ) ) {
 	exit;
 }
@@ -14,22 +24,90 @@ if ( ! defined( 'ABSPATH' ) ) {
 /**
  * Walks the REST route table and emits one descriptor per callable operation.
  */
-final class WC_Agent_Tools_Compiler {
+final class Compiler {
+
+	/**
+	 * Route ownership lookup.
+	 *
+	 * @var Attribution
+	 */
+	private $attribution;
+
+	/**
+	 * Hand-written ability signatures.
+	 *
+	 * @var Dedupe
+	 */
+	private $dedupe;
+
+	/**
+	 * Ability naming.
+	 *
+	 * @var Naming
+	 */
+	private $naming;
+
+	/**
+	 * Undeclared parameter recovery.
+	 *
+	 * @var Params
+	 */
+	private $params;
+
+	/**
+	 * The read and visibility questions.
+	 *
+	 * @var Policy
+	 */
+	private $policy;
+
+	/**
+	 * JSON Schema conversion.
+	 *
+	 * @var Schema
+	 */
+	private $schema;
+
+	/**
+	 * Wire the collaborators this class calls.
+	 *
+	 * @param Attribution $attribution Route ownership lookup.
+	 * @param Dedupe      $dedupe      Hand-written ability signatures.
+	 * @param Naming      $naming      Ability naming.
+	 * @param Params      $params      Undeclared parameter recovery.
+	 * @param Policy      $policy      The read and visibility questions.
+	 * @param Schema      $schema      JSON Schema conversion.
+	 */
+	public function __construct(
+		Attribution $attribution,
+		Dedupe $dedupe,
+		Naming $naming,
+		Params $params,
+		Policy $policy,
+		Schema $schema
+	) {
+		$this->attribution = $attribution;
+		$this->dedupe      = $dedupe;
+		$this->naming      = $naming;
+		$this->params      = $params;
+		$this->policy      = $policy;
+		$this->schema      = $schema;
+	}
 
 	/**
 	 * Stats from the last compile, for the demo harness.
 	 *
 	 * @var array<string,mixed>
 	 */
-	private static $stats = array();
+	private $stats = array();
 
 	/**
 	 * What the last compile counted, or what the cache recorded for it.
 	 *
 	 * @return array<string,mixed>
 	 */
-	public static function stats(): array {
-		return self::$stats;
+	public function stats(): array {
+		return $this->stats;
 	}
 
 	/**
@@ -39,9 +117,9 @@ final class WC_Agent_Tools_Compiler {
 	 * @param array<string,mixed> $stats      The stats.
 	 * @param bool                $from_cache Whether they were restored from the cache.
 	 */
-	public static function set_stats( array $stats, bool $from_cache ): void {
+	public function set_stats( array $stats, bool $from_cache ): void {
 		$stats['from_cache'] = $from_cache;
-		self::$stats         = $stats;
+		$this->stats         = $stats;
 	}
 
 	/**
@@ -49,7 +127,7 @@ final class WC_Agent_Tools_Compiler {
 	 *
 	 * @return array<int,array<string,mixed>>
 	 */
-	public static function compile(): array {
+	public function compile(): array {
 		$server     = rest_get_server();
 		$routes     = $server->get_routes();
 		$namespaces = $server->get_namespaces();
@@ -68,15 +146,15 @@ final class WC_Agent_Tools_Compiler {
 			'emitted'         => 0,
 		);
 
-		$keep_ns              = WC_Agent_Tools_Naming::latest_namespaces( $namespaces );
+		$keep_ns              = $this->naming->latest_namespaces( $namespaces );
 		$stats['skip_old_ns'] = 0;
-		WC_Agent_Tools_Attribution::prime_summaries( $routes );
-		$declared = WC_Agent_Tools_Dedupe::declared_signatures();
+		$this->attribution->prime_summaries( $routes );
+		$declared = $this->dedupe->declared_signatures();
 		$seen     = array();
 		$claimed  = array();
 		$out      = array();
 
-		$routes = self::by_namespace_preference( $server, $routes );
+		$routes = $this->by_namespace_preference( $server, $routes );
 
 		foreach ( $routes as $route => $handlers ) {
 			$trimmed = trim( (string) $route, '/' );
@@ -84,7 +162,7 @@ final class WC_Agent_Tools_Compiler {
 				++$stats['skip_index'];
 				continue;
 			}
-			if ( self::prefixed( (string) $route, WC_Agent_Tools_Config::ROUTE_DENY ) ) {
+			if ( $this->prefixed( (string) $route, Config::ROUTE_DENY ) ) {
 				++$stats['skip_route_deny'];
 				continue;
 			}
@@ -95,7 +173,7 @@ final class WC_Agent_Tools_Compiler {
 
 			$options         = $server->get_route_options( (string) $route );
 			$route_namespace = isset( $options['namespace'] ) ? (string) $options['namespace'] : '';
-			if ( in_array( explode( '/', $route_namespace )[0], WC_Agent_Tools_Config::NS_DENY, true ) ) {
+			if ( in_array( explode( '/', $route_namespace )[0], Config::NS_DENY, true ) ) {
 				++$stats['skip_ns_deny'];
 				continue;
 			}
@@ -103,29 +181,39 @@ final class WC_Agent_Tools_Compiler {
 				++$stats['skip_old_ns'];
 				continue;
 			}
-			$title = WC_Agent_Tools_Schema::schema_title( $options );
+			$title = $this->schema->schema_title( $options );
+
+			// A literal tail is only an action when the route has no GET: with one it is a
+			// nested collection, so POST creates a child. See `Naming::is_action_route()`.
+			$route_has_get = false;
+			foreach ( $handlers as $handler ) {
+				if ( is_array( $handler ) && ! empty( $handler['methods']['GET'] ) ) {
+					$route_has_get = true;
+					break;
+				}
+			}
 
 			foreach ( $handlers as $handler ) {
 				if ( ! is_array( $handler ) || ! isset( $handler['methods'], $handler['callback'] ) ) {
 					continue;
 				}
 
-				if ( ! WC_Agent_Tools_Attribution::enforcing( $handler['permission_callback'] ?? null ) ) {
+				if ( ! $this->attribution->enforcing( $handler['permission_callback'] ?? null ) ) {
 					$stats['skip_perm'] += count( array_filter( $handler['methods'] ) );
 					continue;
 				}
 
-				$owner = WC_Agent_Tools_Attribution::owner_of_handler( $handler );
+				$owner = $this->attribution->owner_of_handler( $handler );
 				if ( null === $owner ) {
 					$stats['skip_owner'] += count( array_filter( $handler['methods'] ) );
 					continue;
 				}
-				if ( ! WC_Agent_Tools_Attribution::is_woo_plugin( $owner ) ) {
+				if ( ! $this->attribution->is_woo_plugin( $owner ) ) {
 					$stats['skip_not_woo'] += count( array_filter( $handler['methods'] ) );
 					continue;
 				}
 
-				$summary       = WC_Agent_Tools_Attribution::summary_of( $handler['callback'] );
+				$summary       = $this->attribution->summary_of( $handler['callback'] );
 				$declared_args = isset( $handler['args'] ) ? (array) $handler['args'] : array();
 
 				/**
@@ -144,24 +232,24 @@ final class WC_Agent_Tools_Compiler {
 				 */
 				$declared_args = (array) apply_filters( 'woocommerce_agent_tools_route_args', $declared_args, (string) $route, (array) $handler['methods'] );
 
-				$model      = WC_Agent_Tools_Schema::from_args( $declared_args );
-				$url_params = WC_Agent_Tools_Naming::url_params( (string) $route );
-				$found      = WC_Agent_Tools_Schema::with_discovered(
+				$model      = $this->schema->from_args( $declared_args );
+				$url_params = $this->naming->url_params( (string) $route );
+				$found      = $this->schema->with_discovered(
 					$model['properties'],
-					WC_Agent_Tools_Params::discover( $handler['callback'] ),
+					$this->params->discover( $handler['callback'] ),
 					$url_params
 				);
 
-				$with_path  = WC_Agent_Tools_Schema::with_path_params(
+				$with_path  = $this->schema->with_path_params(
 					$found['properties'],
 					$model['required'],
-					WC_Agent_Tools_Naming::url_param_specs( (string) $route )
+					$this->naming->url_param_specs( (string) $route )
 				);
 				$args       = $with_path['properties'];
 				$required   = $with_path['required'];
 				$undeclared = $found['undeclared'];
 
-				foreach ( WC_Agent_Tools_Naming::operations( (string) $route, array_keys( array_filter( $handler['methods'] ) ) ) as $op => $method ) {
+				foreach ( $this->naming->operations( (string) $route, array_keys( array_filter( $handler['methods'] ) ), $route_has_get ) as $op => $method ) {
 					$key = $route . ' ' . $op;
 					if ( isset( $seen[ $key ] ) ) {
 						continue;
@@ -169,11 +257,11 @@ final class WC_Agent_Tools_Compiler {
 					$seen[ $key ] = true;
 					++$stats['candidates'];
 
-					$resource_name = WC_Agent_Tools_Naming::resource_of( (string) $route, $route_namespace );
-					$name          = $owner . '/' . WC_Agent_Tools_Naming::slugify( ( '' !== $resource_name ? $resource_name : $title ) . '-' . $op );
-					$readonly      = WC_Agent_Tools_Policy::is_readonly( (string) $route, (string) $method );
+					$resource_name = $this->naming->resource_of( (string) $route, $route_namespace );
+					$name          = $owner . '/' . $this->naming->slugify( ( '' !== $resource_name ? $resource_name : $title ) . '-' . $op );
+					$readonly      = $this->policy->is_readonly( (string) $route, (string) $method );
 
-					$sig = $owner . '|' . WC_Agent_Tools_Naming::resource_key( $resource_name ) . '|' . WC_Agent_Tools_Naming::op_class( $op );
+					$sig = $owner . '|' . $this->naming->resource_key( $resource_name ) . '|' . $this->naming->op_class( $op );
 					// Yield to a hand-written ability only when it publishes at least as much as
 					// this one would. A curated tool can be a deliberate subset, and losing the
 					// richer derived version costs the agent filters it has no other way to reach.
@@ -191,13 +279,13 @@ final class WC_Agent_Tools_Compiler {
 
 					$out[] = array(
 						'name'        => $name,
-						'label'       => WC_Agent_Tools_Naming::label( $method, $resource_name, $op ),
-						'description' => WC_Agent_Tools_Naming::description( $method, $resource_name, $title, $op, $summary, $args ),
+						'label'       => $this->naming->label( $method, $resource_name, $op ),
+						'description' => $this->naming->description( $method, $resource_name, $title, $op, $summary ),
 						'route'       => (string) $route,
 						'method'      => (string) $method,
 						'owner'       => $owner,
 						'readonly'    => $readonly,
-						'public'      => WC_Agent_Tools_Policy::is_public( (string) $route, (string) $method, $readonly, $args ),
+						'public'      => $this->policy->is_public( (string) $route, (string) $method, $readonly, $args ),
 						'args'        => $args,
 						'required'    => $required,
 						'undeclared'  => $undeclared,
@@ -208,7 +296,7 @@ final class WC_Agent_Tools_Compiler {
 		}
 
 		$stats['declared_seen'] = count( $declared );
-		self::$stats            = $stats;
+		$this->stats            = $stats;
 		return $out;
 	}
 
@@ -219,14 +307,14 @@ final class WC_Agent_Tools_Compiler {
 	 * @param array<string,array<int,mixed>> $routes Route table.
 	 * @return array<string,array<int,mixed>>
 	 */
-	private static function by_namespace_preference( WP_REST_Server $server, array $routes ): array {
-		$last    = count( WC_Agent_Tools_Config::NS_PREFER );
+	private function by_namespace_preference( WP_REST_Server $server, array $routes ): array {
+		$last    = count( Config::NS_PREFER );
 		$buckets = array();
 
 		foreach ( $routes as $route => $handlers ) {
 			$options   = $server->get_route_options( (string) $route );
 			$namespace = isset( $options['namespace'] ) ? (string) $options['namespace'] : '';
-			$rank      = array_search( $namespace, WC_Agent_Tools_Config::NS_PREFER, true );
+			$rank      = array_search( $namespace, Config::NS_PREFER, true );
 			$bucket    = false === $rank ? $last : (int) $rank;
 
 			$buckets[ $bucket ][ (string) $route ] = $handlers;
@@ -249,7 +337,7 @@ final class WC_Agent_Tools_Compiler {
 	 * @param string   $value    Value.
 	 * @param string[] $prefixes Prefixes.
 	 */
-	private static function prefixed( string $value, array $prefixes ): bool {
+	private function prefixed( string $value, array $prefixes ): bool {
 		foreach ( $prefixes as $prefix ) {
 			if ( str_starts_with( $value, $prefix ) ) {
 				return true;

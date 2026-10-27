@@ -5,6 +5,9 @@
 	<file>.</file>
 	<exclude-pattern>/vendor/</exclude-pattern>
 	<exclude-pattern>/node_modules/</exclude-pattern>
+	<!-- Analysis-only signatures for another plugin, deliberately mirroring its
+	     namespaces and never loaded at runtime. -->
+	<exclude-pattern>/stubs/</exclude-pattern>
 	<arg name="extensions" value="php"/>
 	<arg name="basepath" value="."/>
 	<arg name="colors"/>
@@ -20,21 +23,34 @@
 	<config name="testVersion" value="7.4-"/>
 	<config name="minimum_supported_wp_version" value="6.9"/>
 
-	<!-- WooCommerce's own config adds these on top of the standard. Its class-name and
-	     file-name sniffs are scoped to src/ because that code is PSR-4; this plugin follows
-	     the WordPress class-foo-bar.php convention that WordPress.Files.FileName checks, so
-	     only these three carry over. -->
+	<!-- WooCommerce's own config adds these on top of the standard. -->
 	<rule ref="Generic.PHP.RequireStrictTypes"/>
 	<rule ref="Generic.Commenting.Todo"/>
 	<rule ref="Generic.Commenting.Fixme"/>
 
-	<!-- The bootstrap declares one global function, which the sniff cannot vouch for
-	     without knowing the plugin's prefixes. -->
+	<!-- src/ is PSR-4, so the WordPress file-name sniffs cannot apply there. The two Squiz
+	     sniffs replace them with a stricter rule: PascalCase class names matching their own
+	     filename. Same swap WooCommerce core makes for its src/. -->
+	<rule ref="WordPress.Files.FileName.InvalidClassFileName">
+		<exclude-pattern>src/</exclude-pattern>
+	</rule>
+	<rule ref="WordPress.Files.FileName.NotHyphenatedLowercase">
+		<exclude-pattern>src/</exclude-pattern>
+	</rule>
+	<rule ref="Squiz.Classes.ClassFileName">
+		<include-pattern>src/</include-pattern>
+	</rule>
+	<rule ref="Squiz.Classes.ValidClassName">
+		<include-pattern>src/</include-pattern>
+	</rule>
+
+	<!-- The bootstrap declares one global function and one global variable; namespaced
+	     classes satisfy the sniff on their own. -->
 	<rule ref="WordPress.NamingConventions.PrefixAllGlobals">
 		<properties>
 			<property name="prefixes" type="array">
 				<element value="wcat"/>
-				<element value="WC_Agent_Tools"/>
+				<element value="WooCommerce\AgentTools"/>
 				<element value="woocommerce_agent_tools"/>
 			</property>
 		</properties>

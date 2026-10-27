@@ -3,7 +3,7 @@
  * Plugin Name: WooCommerce Agent Tools
  * Plugin URI: https://github.com/woocommerce/woocommerce
  * Description: Compiles WordPress abilities from plugin REST routes, so an MCP agent sees what the store can actually do. Prototype for internal evaluation.
- * Version: 0.4.0
+ * Version: 0.5.0
  * Author: WooCommerce
  * Author URI: https://woocommerce.com/
  *
@@ -27,6 +27,8 @@
 
 declare( strict_types=1 );
 
+use WooCommerce\AgentTools\Plugin;
+
 if ( ! defined( 'ABSPATH' ) ) {
 	exit;
 }
@@ -48,6 +50,11 @@ add_action(
 	}
 );
 
+$wcat_autoloader = __DIR__ . '/vendor/autoload.php';
+if ( is_readable( $wcat_autoloader ) ) {
+	require_once $wcat_autoloader;
+}
+
 /**
  * Dependencies that are missing, by name.
  *
@@ -59,6 +66,10 @@ add_action(
  */
 function wcat_missing_dependencies(): array {
 	$missing = array();
+	// A release ships the autoloader; a checkout has one only after `composer install`.
+	if ( ! class_exists( Plugin::class ) ) {
+		$missing[] = 'its own class autoloader (run `composer install`, or install a built release)';
+	}
 	if ( ! function_exists( 'wp_register_ability' ) ) {
 		$missing[] = 'the WordPress Abilities API (WordPress 6.9 or newer)';
 	}
@@ -76,31 +87,7 @@ add_action(
 	function () {
 		$missing = wcat_missing_dependencies();
 		if ( empty( $missing ) ) {
-			foreach ( array(
-				'config',
-				'naming',
-				'schema',
-				'params',
-				'confirm',
-				'gate',
-				'known-shapes',
-				'rest-guard',
-				'attribution',
-				'policy',
-				'dedupe',
-				'secrets',
-				'dispatcher',
-				'ability-factory',
-				'compiler',
-				'cache',
-				'instructions',
-				'discovery',
-				'admin',
-				'plugin',
-			) as $class_file ) {
-				require_once __DIR__ . '/includes/class-wc-agent-tools-' . $class_file . '.php';
-			}
-			WC_Agent_Tools_Plugin::init();
+			Plugin::boot();
 			return;
 		}
 

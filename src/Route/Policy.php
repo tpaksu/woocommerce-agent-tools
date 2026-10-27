@@ -7,6 +7,10 @@
 
 declare( strict_types=1 );
 
+namespace WooCommerce\AgentTools\Route;
+
+use WooCommerce\AgentTools\Config;
+
 if ( ! defined( 'ABSPATH' ) ) {
 	exit;
 }
@@ -14,7 +18,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 /**
  * The two questions a route is asked: does it change the store, and may an agent see it.
  */
-final class WC_Agent_Tools_Policy {
+final class Policy {
 
 	/**
 	 * Whether a route is read-only. Method is the default signal and a good one, but it
@@ -25,9 +29,9 @@ final class WC_Agent_Tools_Policy {
 	 * @param string $route  Route pattern.
 	 * @param string $method HTTP method.
 	 */
-	public static function is_readonly( string $route, string $method ): bool {
+	public function is_readonly( string $route, string $method ): bool {
 		$readonly = 'GET' === $method;
-		if ( ! $readonly && isset( WC_Agent_Tools_Config::QUERY_BY_POST[ $route ] ) ) {
+		if ( ! $readonly && isset( Config::QUERY_BY_POST[ $route ] ) ) {
 			$readonly = true;
 		}
 
@@ -58,7 +62,7 @@ final class WC_Agent_Tools_Policy {
 	 * @param bool                $is_read Whether the route was judged read-only.
 	 * @param array<string,mixed> $args    The route's declared arguments.
 	 */
-	public static function is_public( string $route, string $method, bool $is_read, array $args ): bool {
+	public function is_public( string $route, string $method, bool $is_read, array $args ): bool {
 		$public = true;
 
 		/**

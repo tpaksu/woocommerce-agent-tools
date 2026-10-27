@@ -7,6 +7,13 @@
 
 declare( strict_types=1 );
 
+namespace WooCommerce\AgentTools;
+
+use WooCommerce\AgentTools\Safety\Confirm;
+use WooCommerce\AgentTools\Safety\Secrets;
+use WP_Error;
+use WP_REST_Request;
+
 if ( ! defined( 'ABSPATH' ) ) {
 	exit;
 }
@@ -14,7 +21,23 @@ if ( ! defined( 'ABSPATH' ) ) {
 /**
  * Executes a derived ability by dispatching its route through the REST server, so the route's own validation and permission callback run unchanged.
  */
-final class WC_Agent_Tools_Dispatcher {
+final class Dispatcher {
+
+	/**
+	 * Credential redaction.
+	 *
+	 * @var Secrets
+	 */
+	private $secrets;
+
+	/**
+	 * Wire the collaborators this class calls.
+	 *
+	 * @param Secrets $secrets Credential redaction.
+	 */
+	public function __construct( Secrets $secrets ) {
+		$this->secrets = $secrets;
+	}
 
 	/**
 	 * Whether a dispatch from this class is in flight.
@@ -24,15 +47,18 @@ final class WC_Agent_Tools_Dispatcher {
 	 * the guard's token is keyed on the route while the ability's is keyed on the ability,
 	 * so an agent alternated between two tokens forever with one field to put them in.
 	 *
-	 * @var bool
+	 * Counted rather than a flag: a dispatched route can execute another ability, and the
+	 * inner call's reset would otherwise clear the flag while the outer one is still running.
+	 *
+	 * @var int
 	 */
-	private static $internal = false;
+	private $depth = 0;
 
 	/**
 	 * Whether the current REST request came from an ability rather than a client.
 	 */
-	public static function is_internal(): bool {
-		return self::$internal;
+	public function is_internal(): bool {
+		return $this->depth > 0;
 	}
 
 	/**
@@ -47,12 +73,12 @@ final class WC_Agent_Tools_Dispatcher {
 	 * @param array<string,mixed> $schema  This tool's published properties, for explaining a rejection.
 	 * @return mixed
 	 */
-	public static function dispatch( string $route, string $method, array $input, string $owner = '', string $ability = '', array $schema = array() ) {
+	public function dispatch( string $route, string $method, array $input, string $owner = '', string $ability = '', array $schema = array() ) {
 		// A readonly ability is never gated, so nothing else removes the token, and it
 		// reached WooCommerce Shipping as an unknown field: "confirm is not allowed".
-		unset( $input[ WC_Agent_Tools_Confirm::FIELD ] );
-		$input                               = WC_Agent_Tools_Secrets::resolve_secrets( $input, $owner );
-		list( $path, $rest, $url, $missing ) = self::split_input( $route, $input );
+		unset( $input[ Confirm::FIELD ] );
+		$input                               = $this->secrets->resolve_secrets( $input, $owner );
+		list( $path, $rest, $url, $missing ) = $this->split_input( $route, $input );
 
 		if ( ! empty( $missing ) ) {
 			return new WP_Error(
@@ -62,7 +88,7 @@ final class WC_Agent_Tools_Dispatcher {
 					implode(
 						' and ',
 						array_map(
-							static function ( $name ) {
+							function ( $name ) {
 								return '`' . $name . '`'; },
 							$missing
 						)
@@ -87,18 +113,18 @@ final class WC_Agent_Tools_Dispatcher {
 
 		// rest_do_request() converts a WP_Error into a response, so there is no error
 		// return to guard against here; the status is what carries the failure.
-		self::$internal = true;
+		++$this->depth;
 		try {
 			$response = rest_do_request( $request );
 		} finally {
-			self::$internal = false;
+			--$this->depth;
 		}
 		if ( $response->is_error() ) {
-			return self::explain( $response->as_error(), $response->get_status(), $schema );
+			return $this->explain( $response->as_error(), $response->get_status(), $schema );
 		}
 		$data = $response->get_data();
 		$data = is_array( $data ) ? $data : array( 'value' => $data );
-		return WC_Agent_Tools_Secrets::redact_secrets( $data, $ability, $owner );
+		return $this->secrets->redact_secrets( $data, $ability, $owner );
 	}
 
 	/**
@@ -109,12 +135,12 @@ final class WC_Agent_Tools_Dispatcher {
 	 * @param array<string,mixed> $input  Ability input.
 	 * @return bool
 	 */
-	public static function check( string $route, string $method, array $input ): bool {
+	public function check( string $route, string $method, array $input ): bool {
 		$handlers = rest_get_server()->get_routes();
 		if ( ! isset( $handlers[ $route ] ) ) {
 			return false;
 		}
-		list( $path, $rest, $url, $missing ) = self::split_input( $route, $input );
+		list( $path, $rest, $url, $missing ) = $this->split_input( $route, $input );
 
 		foreach ( $handlers[ $route ] as $handler ) {
 			if ( ! is_array( $handler ) || empty( $handler['methods'][ $method ] ) ) {
@@ -155,7 +181,7 @@ final class WC_Agent_Tools_Dispatcher {
 	 * @param array<string,mixed> $schema This tool's published properties.
 	 * @return WP_Error
 	 */
-	private static function explain( WP_Error $error, int $status, array $schema ): WP_Error {
+	private function explain( WP_Error $error, int $status, array $schema ): WP_Error {
 		$message = $error->get_error_message();
 		$data    = (array) $error->get_error_data();
 		$fields  = array();
@@ -205,7 +231,7 @@ final class WC_Agent_Tools_Dispatcher {
 	 * @param array<string,mixed> $input Ability input.
 	 * @return array{0:string,1:array<string,mixed>,2:array<string,mixed>,3:string[]}
 	 */
-	private static function split_input( string $route, array $input ): array {
+	private function split_input( string $route, array $input ): array {
 		$path    = $route;
 		$url     = array();
 		$missing = array();

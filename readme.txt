@@ -5,7 +5,7 @@ Tags: woocommerce, mcp, abilities, agent, ai
 Requires at least: 6.9
 Requires PHP: 7.4
 Tested up to: 7.1
-Stable tag: 0.4.0
+Stable tag: 0.5.0
 WC requires at least: 10.0
 WC tested up to: 11.4
 License: GNU General Public License v3.0
@@ -39,6 +39,73 @@ WooCommerce, the MCP Adapter and the required WordPress version are all declared
 Step four is the whole setup. It shows the endpoint this store serves, creates an application password on a button, and hands you the client configuration with the credential already filled in, for Claude Code and for any other MCP client. It also tells you what the agent will be able to do as the user you created the password for, which is the part worth reading before you connect anything.
 
 Restart your client afterwards, because MCP servers are read at session start.
+
+== Using it ==
+
+Once a client is connected, you talk to your agent in ordinary language and it works the store through the tools. This section is what happens underneath, so you can tell whether what you are reading back is what you asked for.
+
+= A session always starts with discovery =
+
+Your client lists three tools, which the MCP Adapter names `mcp-adapter-discover-abilities`, `mcp-adapter-get-ability-info` and `mcp-adapter-execute-ability`. The store's real capabilities sit behind them. An agent asks for the list, picks a tool, reads its parameters, then calls it.
+
+Ask it to discover first in any session where the store may have changed. The list is not fixed: activate an extension and its tools appear, deactivate it and they go. A tool name that worked on another store may not exist on yours.
+
+= Reading is immediate =
+
+"How many orders are still processing?" needs no permission from you. A read runs on the first call and answers:
+
+    products-list, per_page 1
+    {"success":true,"data":[{"id":33,"name":"WordPress Pennant", ...
+
+Reads are the majority of the surface. Nothing is held, nothing is previewed.
+
+= Writing takes two calls, and the first one is yours to approve =
+
+Anything that is not read-only runs nothing on the first attempt. It comes back with a statement of what the call would do and a single-use token:
+
+    woocommerce/coupons-create is not reversible, so it did not run. This is what it would do:
+    Create coupons with code=summer-sale, discount_type=percent, amount=5. Put that in front of
+    the merchant in those terms, including anything you inferred or chose yourself, and wait for
+    their answer. If they agree, call again with the same arguments plus confirm="0bb0dba7...". If anything above is not what they asked for, do not call again: ...
+
+Your agent is instructed to show you that sentence before going any further. Read the arguments, not the summary: the token is bound to those exact values, so what you approve is what runs, and a changed amount or a different order id produces a different token that has to be previewed again.
+
+Say yes and the second call runs. Say nothing and nothing happens.
+
+This covers every write on the store, including abilities WooCommerce and other extensions register, not only the ones this plugin derives.
+
+= Some writes declare no payload, and those come back to you =
+
+A few routes declare no parameters at all, so the store cannot tell the agent what payload they expect. That class is about a fifth of the writes, and it is exactly where the consequential things live: accepting a terms of service, connecting a payment or shipping account, triggering a deposit. Those refuse differently:
+
+    woocommerce-shipping/tos-create is not reversible, so it did not run. Its route declares no
+    parameters, so nothing here can tell you what payload that route expects. The call is
+    nevertheless sending accepted=true. What the tool says it does is: Create tos. Relay all of
+    that, and say that the route has not stated what it takes, so any values above are ones you
+    inferred rather than ones it asked for. ... the normal answer is for them to do it
+    themselves at https://example.com/wp-admin/.
+
+Read the arguments in that one especially carefully. A route declaring no parameters does not stop the agent sending some: it is told to infer them from the error the route gives back, so anything listed there is the agent's guess at what the route wants, not something the route asked for. The agent should hand you the link and stop. Do it in wp-admin, where the screen states the terms, then tell it you are done.
+
+= After you change something in wp-admin, ask it to refresh =
+
+Accepting an agreement or connecting an account changes what the store exposes without changing which plugins are active, and the compiled tool list is cached against the active plugins. So it will not notice on its own. `woocommerce/refresh-abilities` drops the list, and the next discovery rebuilds it:
+
+    {"flushed":true,"next":"Call discover-abilities again. ..."}
+
+Accepting the WooCommerce Shipping terms, for instance, takes it from two tools to several dozen; the exact count depends on the version and what else is installed. Until you refresh, an unchanged list is not evidence that what you did in wp-admin failed.
+
+= Repeating a confirmed call =
+
+A payload that has already been confirmed will not be previewed or run again for ten minutes, whether the token is resent or the agent starts over from scratch. This is deliberate: a client that times out on a slow carrier call and retries would otherwise refund twice. If you genuinely want the same thing done again, wait it out, or send a request that differs in a way you actually want.
+
+= When there is no tool for something =
+
+The agent is told to say so rather than reach for the REST API, WP-CLI or the database, and to suggest what would provide it: an inactive plugin that needs activating, a curated suggestion feed, or a search of WooCommerce.com and the WordPress.org directory. It will name candidates with prices and links and stop. Installing an extension is what creates its tools, so that decision stays with you.
+
+= Changing what the agent is told =
+
+The operating instructions sent in the MCP handshake are a single file, `agents.md`, in this plugin. It tells the agent that it is your store manager on this connection, how to handle the two-phase gate, what to do when a schema is incomplete, and that it is not a shopping assistant here, because these tools run with your user's capabilities across every order and customer rather than one shopper's own. Drop your own copy at `wp-content/agents.md` to override it; that location wins and survives a plugin update.
 
 == Frequently Asked Questions ==
 
@@ -112,8 +179,8 @@ Deliberately deferred. None of it blocks evaluation; all of it would block shipp
 * Exposure is total by design, so the connected user's role is the entire security story.
 * The confirmation gate forces a write to be stated, not read. An agent can return the token immediately, and one confirmed 18 order deletions in a row.
 * A preview describes the call and not its consequences. Setting an order to `refunded` makes WooCommerce create a refund record against it, which the preview does not mention.
-* 46 tools have parameters their route never declares, 78 parameters in all. The names are recovered by reading the handler and published with a permissive type, and the tool says which ones they are, but their shapes are unknown. A plugin can state them with `woocommerce_agent_tools_route_args`.
-* 31 writes publish an empty input schema. Their description says so, rather than letting it read as "takes no arguments".
+* 49 tools have parameters their route never declares, 87 parameters in all. The names are recovered by reading the handler and published with a permissive type, and the tool says which ones they are, but their shapes are unknown. A plugin can state them with `woocommerce_agent_tools_route_args`.
+* 38 writes declare no parameters of their own, so the only property they publish is `confirm`. Their description says so, and the gate hands them to the merchant rather than previewing a payload the route never stated.
 * The discovery payload is large, and richer schemas made it bigger. It is unpaged, so a client without a way to spill it to disk cannot read the tool list at all. Every agent tested worked around it with a shell.
 * The `destructive` annotation is true for every write, which is conservative rather than correct.
 * A route whose permission callback is `is_user_logged_in()` still counts as enforcing.
@@ -125,6 +192,28 @@ Deliberately deferred. None of it blocks evaluation; all of it would block shipp
 * Untested on multisite.
 
 == Changelog ==
+
+= 0.5.0 - 2026-10-27 =
+* Add - `refresh-abilities`, which drops the compiled tool list so the next discovery rebuilds it. The list is cached against the active plugins and their versions, and accepting an agreement or connecting an account changes neither: WooCommerce Shipping goes from two tools to several dozen on accepting its terms, with an identical fingerprint either side, so the stale list was served for up to a day with nothing able to notice. The refusal for a call handed to the merchant now tells the agent to refresh and discover again once they report it done, and says that an unchanged list is not evidence they failed until it has been refreshed.
+* Add - A write whose route declares no parameters now hands the call to the merchant instead of previewing it. The route states no payload, so the gate cannot tell the agent what it expects; the refusal relays what the tool says it does and lists anything the agent inferred and is sending anyway. That class is where the consequential calls sit, among them accepting a WooCommerce Shipping or WooPayments terms of service, connecting Square or WooPayments, requesting a WooCommerce.com connection, scheduling a Stripe Billing migration and creating an instant deposit. The refusal now names an admin screen and asks the agent to send the merchant there; the token still works for a merchant who reads that and asks it to go ahead. Only abilities in this plugin's own category are read this way, so a bare key on another plugin's meta cannot describe a call that does declare parameters as having none, or choose the screen a merchant is sent to. On a store running WooCommerce with WooPayments, WooCommerce Shipping, Bookings, Gift Cards and Product Bundles, 38 of 193 writes are in the class.
+* Add - `woocommerce_agent_tools_self_serve_url`, so the plugin that owns a route can send one of those calls to its own settings screen rather than the admin root. Returning an empty string opts a route out and leaves it with the ordinary preview.
+* Fix - `Cache::flush()` documented itself as the manual refresh and had no caller, so the only way to rebuild the tool list was to wait out the day-long cache or delete the transient by hand.
+* Fix - `woocommerce_agent_tools_route_needs_confirmation` decided whether a derived tool published its `confirm` property and its not-reversible note, while the gate that enforces the hold read the route's own read/write annotation instead. A filter that asked for a read to be held left a tool promising a preview it never gave, and one that released a write produced a hold the tool had not advertised. A derived tool now records the decision its description was built from, and the gate honours that record for abilities in this plugin's own category; anything else is judged on its annotation as before.
+* Fix - A confirmation claimed for a call that was then refused before it ran, by the route's permission check or by input validation, left the merchant told their call had already been attempted and locked out of the same payload for ten minutes. The gate runs before either check, so it now hands the confirmation back when one of them refuses the call, on the ability path and on a direct REST write alike, and stops tracking it once the call is certain to run so a later refusal cannot re-arm a confirmation that has been spent.
+* Fix - A confirmation token authorised more than one call, in three ways: two calls carrying one token could both pass the liveness check before either spent it; a token that had already been spent was re-issued to whichever call failed to claim it; and an agent that restarted the protocol without a token was handed the same token back under a fresh preview, because the token is derived from the payload rather than issued at random. A payload that has already been confirmed is now refused with `wcat_confirmation_spent` and status 409 on every path, with no token handed back, while a confirmation that merely expired still returns a fresh preview. The record of the claim is written before the token stops being claimable, because the other order left a window in which a caller could re-arm a token and then redeem it. It matters most where there is no inverse, such as a second shipping-label refund.
+* Fix - A throw while re-reading a redacted secret left the re-entrancy flag set, and every later response in that request was returned to the agent unredacted.
+* Fix - A cache entry holding a fingerprint but no descriptors made the compiler skip loading the full route table and then compile against a partial one, emitting a fraction of the store's tools.
+* Fix - A tool whose route ran another ability stopped being recognised as internal traffic partway through, because the inner call reset a shared flag while the outer one was still running. The REST guard then began demanding a confirmation token for the rest of that outer call.
+* Fix - A route registering POST, PUT and PATCH against one callback compiled into two tools, a create and an update, that called the same handler with the same parameters and gave an agent no way to choose between them. The edit verbs on a single handler now yield one tool, and POST represents the merge so the surviving name says what the route does rather than naming the highest-ranking verb: a collection keeps `create`, an action route keeps its tail, and `/plugins/activate` stays `plugins-activate-create` instead of becoming `plugins-activate-update`. Removes 20 duplicate tools, and recovers `payments-settings-update` for `/payments/settings/{option_name}`, which had been losing a name collision to `PUT /payments/settings`. A literal tail is only treated as an action when the route serves no GET, so a nested collection such as `/orders/{id}/refunds` is `orders-refunds-create` rather than `orders-refunds-refunds`. A route that registers POST and PUT as separate handlers keeps both tools, since those are different callbacks.
+* Tweak - agents.md tells a connecting agent who it is on this connection: the merchant's store manager, talking in the store's terms, and explicitly not a shopping assistant, since the tools here run with the connected user's capabilities over every order and customer rather than one shopper's own.
+* Tweak - agents.md says what to do after the merchant finishes a task in wp-admin: refresh the tool list before concluding anything from it.
+* Tweak - agents.md explains the class of call whose route states no payload, what the refusal says instead, and what to do with the admin screen it usually names.
+* Tweak - Drop the parameter list from every tool description. It repeated `input_schema`, which get-ability-info returns in full, and named only the first ten parameters, so a tool taking twenty-three read as taking ten. Shortens what `discover-abilities` returns by 15.6%.
+* Dev - Move the classes to PSR-4 under `src/`, in the `WooCommerce\AgentTools` namespace, grouped by responsibility (`Route`, `Ability`, `Safety`, `Agent`). The build now ships Composer's autoloader instead of a hand-maintained list of twenty `require_once` lines, which was a silent fatal whenever a new class was forgotten.
+* Dev - Replace the static classes with constructor injection. Collaborators are passed in, `Plugin` is the only place that calls `new`, and the request-scoped state that lived in static properties now belongs to the object that owns it.
+* Dev - Class names change with the namespace: `WC_Agent_Tools_Gate` is now `WooCommerce\AgentTools\Safety\Gate`, and so on. The filters are unchanged, so anything hooking `woocommerce_agent_tools_*` keeps working.
+* Dev - Stub the two PHP 8 string functions WordPress polyfills, so static analysis runs with no suppressed errors at all rather than ignoring them by pattern.
+* Dev - Exclude the analysis-only stubs from the coding-standards run, and apply WooCommerce core's own sniff swap for a PSR-4 directory: the WordPress file-name rules off, the stricter class-name and file-match rules on.
 
 = 0.4.0 - 2026-10-26 =
 * Add - The confirmation gate now covers every write on the store, including abilities WooCommerce and other plugins register, not only the ones this plugin derives. A first call runs nothing and returns a preview plus a token; the same arguments with that token run.

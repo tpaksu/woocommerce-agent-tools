@@ -7,6 +7,8 @@
 
 declare( strict_types=1 );
 
+namespace WooCommerce\AgentTools\Route;
+
 if ( ! defined( 'ABSPATH' ) ) {
 	exit;
 }
@@ -28,13 +30,13 @@ if ( ! defined( 'ABSPATH' ) ) {
  * Shapes verified against `client/utils/location/api-request.ts` (`mapAddressForRequest`) and
  * `client/types/connect-server/request-package.d.ts` (`LabelRequestPackages`).
  */
-final class WC_Agent_Tools_Known_Shapes {
+final class KnownShapes {
 
 	/**
 	 * Hook up.
 	 */
-	public static function init(): void {
-		add_filter( 'woocommerce_agent_tools_route_args', array( __CLASS__, 'declare_args' ), 10, 3 );
+	public function init(): void {
+		add_filter( 'woocommerce_agent_tools_route_args', array( $this, 'declare_args' ), 10, 3 );
 	}
 
 	/**
@@ -45,7 +47,7 @@ final class WC_Agent_Tools_Known_Shapes {
 	 * @param mixed  $methods The methods this handler serves.
 	 * @return mixed
 	 */
-	public static function declare_args( $args, $route, $methods = array() ) {
+	public function declare_args( $args, $route, $methods = array() ) {
 		if ( ! is_array( $args ) ) {
 			return $args;
 		}

@@ -15,15 +15,17 @@ if ( ! defined( 'WP_UNINSTALL_PLUGIN' ) ) {
 delete_transient( 'wcat_descriptors' );
 
 /**
- * The reference map is per user and the search results are per term, so both are families
- * of transients rather than single keys.
+ * The reference map is per user, the search results are per term and the gate's tokens are
+ * per payload, so each is a family of transients rather than a single key.
  */
 global $wpdb;
 $wcat_transients = $wpdb->get_col(
 	$wpdb->prepare(
-		"SELECT option_name FROM {$wpdb->options} WHERE option_name LIKE %s OR option_name LIKE %s",
+		"SELECT option_name FROM {$wpdb->options} WHERE option_name LIKE %s OR option_name LIKE %s OR option_name LIKE %s OR option_name LIKE %s",
 		$wpdb->esc_like( '_transient_wcat_search_' ) . '%',
-		$wpdb->esc_like( '_transient_wcat_secret_map_' ) . '%'
+		$wpdb->esc_like( '_transient_wcat_secret_map_' ) . '%',
+		$wpdb->esc_like( '_transient_wcat_confirm_' ) . '%',
+		$wpdb->esc_like( '_transient_wcat_spent_' ) . '%'
 	)
 );
 foreach ( (array) $wcat_transients as $wcat_option_name ) {

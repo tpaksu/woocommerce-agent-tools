@@ -7,6 +7,8 @@
 
 declare( strict_types=1 );
 
+namespace WooCommerce\AgentTools\Agent;
+
 if ( ! defined( 'ABSPATH' ) ) {
 	exit;
 }
@@ -14,17 +16,25 @@ if ( ! defined( 'ABSPATH' ) ) {
 /**
  * The operating instructions this store puts in front of a connecting agent, read from agents.md.
  */
-final class WC_Agent_Tools_Instructions {
+final class Instructions {
+
+	/**
+	 * The instructions text, memoized for the request.
+	 *
+	 * @var string|null
+	 */
+	private $text = null;
 
 	/**
 	 * Where instructions are looked for, nearest first.
 	 *
 	 * @return string[]
 	 */
-	private static function paths(): array {
+	private function paths(): array {
 		return array(
 			WP_CONTENT_DIR . '/agents.md',
-			dirname( __DIR__ ) . '/agents.md',
+			// src/Agent/ sits two levels under the plugin root, where the shipped agents.md is.
+			dirname( __DIR__, 2 ) . '/agents.md',
 		);
 	}
 
@@ -39,11 +49,10 @@ final class WC_Agent_Tools_Instructions {
 	 * check and the read, which is a silent failure in the one place a store is explaining
 	 * itself.
 	 */
-	public static function instructions(): string {
-		static $text = null;
-		if ( null === $text ) {
-			$text = '';
-			foreach ( self::paths() as $path ) {
+	public function instructions(): string {
+		if ( null === $this->text ) {
+			$this->text = '';
+			foreach ( $this->paths() as $path ) {
 				if ( ! is_readable( $path ) ) {
 					continue;
 				}
@@ -51,7 +60,7 @@ final class WC_Agent_Tools_Instructions {
 				if ( ! is_string( $contents ) || '' === trim( $contents ) ) {
 					continue;
 				}
-				$text = trim( $contents );
+				$this->text = trim( $contents );
 				break;
 			}
 		}
@@ -63,6 +72,6 @@ final class WC_Agent_Tools_Instructions {
 		 *
 		 * @param string $text The instructions.
 		 */
-		return (string) apply_filters( 'woocommerce_agent_tools_server_instructions', $text );
+		return (string) apply_filters( 'woocommerce_agent_tools_server_instructions', $this->text );
 	}
 }

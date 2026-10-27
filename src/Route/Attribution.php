@@ -7,6 +7,14 @@
 
 declare( strict_types=1 );
 
+namespace WooCommerce\AgentTools\Route;
+
+use Closure;
+use ReflectionClass;
+use ReflectionFunction;
+use ReflectionMethod;
+use Throwable;
+
 if ( ! defined( 'ABSPATH' ) ) {
 	exit;
 }
@@ -14,21 +22,21 @@ if ( ! defined( 'ABSPATH' ) ) {
 /**
  * Works out which plugin owns a route handler, whether its permission callback enforces anything, and what its docblock says.
  */
-final class WC_Agent_Tools_Attribution {
+final class Attribution {
 
 	/**
 	 * Memoised plugin-slug => is-a-woo-plugin.
 	 *
 	 * @var array<string,bool>
 	 */
-	private static $woo_plugin = array();
+	private $woo_plugin = array();
 
 	/**
 	 * Store-wide count of docblock summaries, for the uniqueness test.
 	 *
 	 * @var array<string,int>
 	 */
-	private static $summary_counts = array();
+	private $summary_counts = array();
 
 	/**
 	 * The plugin a route handler belongs to, via its callback or failing that its permission
@@ -43,9 +51,9 @@ final class WC_Agent_Tools_Attribution {
 	 * @param array<string,mixed> $handler One route handler.
 	 * @return string|null
 	 */
-	public static function owner_of_handler( array $handler ): ?string {
-		$owner = self::owner_of( $handler['callback'] ?? null );
-		return null !== $owner ? $owner : self::owner_of( $handler['permission_callback'] ?? null );
+	public function owner_of_handler( array $handler ): ?string {
+		$owner = $this->owner_of( $handler['callback'] ?? null );
+		return null !== $owner ? $owner : $this->owner_of( $handler['permission_callback'] ?? null );
 	}
 
 	/**
@@ -54,7 +62,7 @@ final class WC_Agent_Tools_Attribution {
 	 * @param mixed $cb Callback.
 	 * @return string|null
 	 */
-	public static function owner_of( $cb ): ?string {
+	public function owner_of( $cb ): ?string {
 		try {
 			if ( is_array( $cb ) && 2 === count( $cb ) ) {
 				if ( is_object( $cb[0] ) ) {
@@ -94,9 +102,9 @@ final class WC_Agent_Tools_Attribution {
 	 *
 	 * @param string $slug Plugin directory slug.
 	 */
-	public static function is_woo_plugin( string $slug ): bool {
-		if ( isset( self::$woo_plugin[ $slug ] ) ) {
-			return self::$woo_plugin[ $slug ];
+	public function is_woo_plugin( string $slug ): bool {
+		if ( isset( $this->woo_plugin[ $slug ] ) ) {
+			return $this->woo_plugin[ $slug ];
 		}
 		$is = false;
 		if ( 'woocommerce' === $slug ) {
@@ -125,7 +133,7 @@ final class WC_Agent_Tools_Attribution {
 				break;
 			}
 		}
-		self::$woo_plugin[ $slug ] = $is;
+		$this->woo_plugin[ $slug ] = $is;
 		return $is;
 	}
 
@@ -134,7 +142,7 @@ final class WC_Agent_Tools_Attribution {
 	 *
 	 * @param mixed $cb Callback.
 	 */
-	public static function enforcing( $cb ): bool {
+	public function enforcing( $cb ): bool {
 		if ( empty( $cb ) || ! is_callable( $cb ) ) {
 			return false;
 		}
@@ -149,7 +157,7 @@ final class WC_Agent_Tools_Attribution {
 	 *
 	 * @param mixed $cb Callback.
 	 */
-	public static function summary_of( $cb ): string {
+	public function summary_of( $cb ): string {
 		$doc = false;
 		try {
 			if ( is_array( $cb ) && 2 === count( $cb ) ) {
@@ -192,8 +200,8 @@ final class WC_Agent_Tools_Attribution {
 	 *
 	 * @param array<string,mixed> $routes Route table.
 	 */
-	public static function prime_summaries( array $routes ): void {
-		self::$summary_counts = self::count_summaries( $routes );
+	public function prime_summaries( array $routes ): void {
+		$this->summary_counts = $this->count_summaries( $routes );
 	}
 
 	/**
@@ -202,8 +210,8 @@ final class WC_Agent_Tools_Attribution {
 	 *
 	 * @param string $summary The summary.
 	 */
-	public static function summary_is_unique( string $summary ): bool {
-		return 1 === ( self::$summary_counts[ $summary ] ?? 0 );
+	public function summary_is_unique( string $summary ): bool {
+		return 1 === ( $this->summary_counts[ $summary ] ?? 0 );
 	}
 
 	/**
@@ -212,14 +220,14 @@ final class WC_Agent_Tools_Attribution {
 	 * @param array<string,mixed> $routes The REST route table.
 	 * @return array<string,int>
 	 */
-	private static function count_summaries( array $routes ): array {
+	private function count_summaries( array $routes ): array {
 		$counts = array();
 		foreach ( $routes as $handlers ) {
 			foreach ( (array) $handlers as $handler ) {
 				if ( ! is_array( $handler ) || ! isset( $handler['callback'] ) ) {
 					continue;
 				}
-				$s = self::summary_of( $handler['callback'] );
+				$s = $this->summary_of( $handler['callback'] );
 				if ( '' !== $s ) {
 					$counts[ $s ] = ( $counts[ $s ] ?? 0 ) + 1;
 				}

@@ -7,6 +7,12 @@
 
 declare( strict_types=1 );
 
+namespace WooCommerce\AgentTools;
+
+use WooCommerce\AgentTools\Safety\RestGuard;
+use WP_Application_Passwords;
+use WP_User;
+
 if ( ! defined( 'ABSPATH' ) ) {
 	exit;
 }
@@ -14,7 +20,23 @@ if ( ! defined( 'ABSPATH' ) ) {
 /**
  * The Tools screen that explains how to connect an agent, and issues the credential it needs.
  */
-final class WC_Agent_Tools_Admin {
+final class Admin {
+
+	/**
+	 * The REST-level confirmation gate.
+	 *
+	 * @var RestGuard
+	 */
+	private $rest_guard;
+
+	/**
+	 * Wire the collaborators this class calls.
+	 *
+	 * @param RestGuard $rest_guard The REST-level confirmation gate.
+	 */
+	public function __construct( RestGuard $rest_guard ) {
+		$this->rest_guard = $rest_guard;
+	}
 
 	const PAGE_SLUG = 'woocommerce-agent-tools';
 	const ACTION    = 'wcat_create_password';
@@ -26,26 +48,26 @@ final class WC_Agent_Tools_Admin {
 	 *
 	 * @var array{name:string,password:string}|null
 	 */
-	private static $new_credential = null;
+	private $new_credential = null;
 
 	/**
 	 * Hook up.
 	 */
-	public static function init(): void {
-		add_action( 'admin_menu', array( __CLASS__, 'register_page' ) );
-		add_action( 'admin_post_' . self::ACTION, array( __CLASS__, 'handle_create_password' ) );
+	public function init(): void {
+		add_action( 'admin_menu', array( $this, 'register_page' ) );
+		add_action( 'admin_post_' . self::ACTION, array( $this, 'handle_create_password' ) );
 	}
 
 	/**
 	 * Add the screen under Tools.
 	 */
-	public static function register_page(): void {
+	public function register_page(): void {
 		add_management_page(
 			__( 'Agent Tools', 'woocommerce-agent-tools' ),
 			__( 'Agent Tools', 'woocommerce-agent-tools' ),
 			'manage_options',
 			self::PAGE_SLUG,
-			array( __CLASS__, 'render' )
+			array( $this, 'render' )
 		);
 	}
 
@@ -55,7 +77,7 @@ final class WC_Agent_Tools_Admin {
 	 * Read from the adapter's live server object rather than by re-applying its config
 	 * filter, which would run every callback again, this plugin's own among them.
 	 */
-	public static function endpoint(): string {
+	public function endpoint(): string {
 		$namespace = 'mcp';
 		$route     = 'mcp-adapter-default-server';
 
@@ -73,7 +95,7 @@ final class WC_Agent_Tools_Admin {
 	/**
 	 * How many abilities an agent would discover right now.
 	 */
-	public static function visible_tool_count(): int {
+	public function visible_tool_count(): int {
 		if ( ! function_exists( 'wp_get_abilities' ) || ! class_exists( '\WP\MCP\Abilities\McpAbilityExposure' ) ) {
 			return 0;
 		}
@@ -89,7 +111,7 @@ final class WC_Agent_Tools_Admin {
 	/**
 	 * Create an application password for the current user and keep it for one render.
 	 */
-	public static function handle_create_password(): void {
+	public function handle_create_password(): void {
 		if ( ! current_user_can( 'manage_options' ) ) {
 			wp_die( esc_html__( 'You are not allowed to do that.', 'woocommerce-agent-tools' ), 403 );
 		}
@@ -97,7 +119,7 @@ final class WC_Agent_Tools_Admin {
 
 		$user_id = get_current_user_id();
 		if ( ! wp_is_application_passwords_available_for_user( $user_id ) || ! current_user_can( 'create_app_password', $user_id ) ) {
-			self::redirect_with( 'unavailable' );
+			$this->redirect_with( 'unavailable' );
 		}
 
 		$name    = isset( $_POST['wcat_name'] ) ? sanitize_text_field( wp_unslash( (string) $_POST['wcat_name'] ) ) : '';
@@ -105,12 +127,12 @@ final class WC_Agent_Tools_Admin {
 		$created = WP_Application_Passwords::create_new_application_password( $user_id, array( 'name' => $name ) );
 
 		if ( is_wp_error( $created ) ) {
-			self::redirect_with( 'failed' );
+			$this->redirect_with( 'failed' );
 		}
 
 		// Record the uuid so direct REST writes from this credential are held to the gate.
 		if ( isset( $created[1]['uuid'] ) ) {
-			WC_Agent_Tools_Rest_Guard::remember_password( (string) $created[1]['uuid'] );
+			$this->rest_guard->remember_password( (string) $created[1]['uuid'] );
 		}
 
 		// Stash the plaintext for a single render. It cannot be recovered afterwards.
@@ -122,7 +144,7 @@ final class WC_Agent_Tools_Admin {
 			),
 			60
 		);
-		self::redirect_with( 'created' );
+		$this->redirect_with( 'created' );
 	}
 
 	/**
@@ -130,7 +152,7 @@ final class WC_Agent_Tools_Admin {
 	 *
 	 * @param string $notice Notice code.
 	 */
-	private static function redirect_with( string $notice ): void {
+	private function redirect_with( string $notice ): void {
 		wp_safe_redirect(
 			add_query_arg(
 				array(
@@ -146,20 +168,20 @@ final class WC_Agent_Tools_Admin {
 	/**
 	 * Render the screen.
 	 */
-	public static function render(): void {
+	public function render(): void {
 		if ( ! current_user_can( 'manage_options' ) ) {
 			return;
 		}
 
 		$user      = wp_get_current_user();
-		$endpoint  = self::endpoint();
+		$endpoint  = $this->endpoint();
 		$notice    = isset( $_GET['wcat_notice'] ) ? sanitize_key( wp_unslash( (string) $_GET['wcat_notice'] ) ) : ''; // phpcs:ignore WordPress.Security.NonceVerification.Recommended -- Display-only notice code, no state change.
 		$available = wp_is_application_passwords_available_for_user( $user->ID ) && current_user_can( 'create_app_password', $user->ID );
 
 		if ( 'created' === $notice ) {
 			$stashed = get_transient( 'wcat_new_password_' . $user->ID );
 			if ( is_array( $stashed ) ) {
-				self::$new_credential = $stashed;
+				$this->new_credential = $stashed;
 				delete_transient( 'wcat_new_password_' . $user->ID );
 			}
 		}
@@ -175,18 +197,18 @@ final class WC_Agent_Tools_Admin {
 					_n(
 						'This store exposes %d tool to a connected agent, compiled from the REST routes of WooCommerce and the extensions installed beside it.',
 						'This store exposes %d tools to a connected agent, compiled from the REST routes of WooCommerce and the extensions installed beside it.',
-						self::visible_tool_count(),
+						$this->visible_tool_count(),
 						'woocommerce-agent-tools'
 					),
-					self::visible_tool_count()
+					$this->visible_tool_count()
 				)
 			)
 		);
 
-		self::render_notice( $notice );
-		self::render_endpoint( $endpoint );
-		self::render_credential_section( $user, $endpoint, $available );
-		self::render_capability_warning( $user );
+		$this->render_notice( $notice );
+		$this->render_endpoint( $endpoint );
+		$this->render_credential_section( $user, $endpoint, $available );
+		$this->render_capability_warning( $user );
 
 		echo '</div>';
 	}
@@ -196,7 +218,7 @@ final class WC_Agent_Tools_Admin {
 	 *
 	 * @param string $notice Notice code.
 	 */
-	private static function render_notice( string $notice ): void {
+	private function render_notice( string $notice ): void {
 		if ( 'failed' === $notice ) {
 			printf(
 				'<div class="notice notice-error"><p>%s</p></div>',
@@ -216,7 +238,7 @@ final class WC_Agent_Tools_Admin {
 	 *
 	 * @param string $endpoint Endpoint URL.
 	 */
-	private static function render_endpoint( string $endpoint ): void {
+	private function render_endpoint( string $endpoint ): void {
 		printf( '<h2>%s</h2>', esc_html__( 'Endpoint', 'woocommerce-agent-tools' ) );
 		printf(
 			'<p>%s</p>',
@@ -235,11 +257,11 @@ final class WC_Agent_Tools_Admin {
 	 * @param string  $endpoint  Endpoint URL.
 	 * @param bool    $available Whether this user may create an application password.
 	 */
-	private static function render_credential_section( WP_User $user, string $endpoint, bool $available ): void {
+	private function render_credential_section( WP_User $user, string $endpoint, bool $available ): void {
 		printf( '<h2>%s</h2>', esc_html__( 'Authentication', 'woocommerce-agent-tools' ) );
 
-		if ( null !== self::$new_credential ) {
-			$auth = base64_encode( $user->user_login . ':' . self::$new_credential['password'] ); // phpcs:ignore WordPress.PHP.DiscouragedPHPFunctions.obfuscation_base64_encode -- Builds an HTTP Basic credential, not obfuscation.
+		if ( null !== $this->new_credential ) {
+			$auth = base64_encode( $user->user_login . ':' . $this->new_credential['password'] ); // phpcs:ignore WordPress.PHP.DiscouragedPHPFunctions.obfuscation_base64_encode -- Builds an HTTP Basic credential, not obfuscation.
 
 			printf(
 				'<div class="notice notice-success"><p><strong>%s</strong> %s</p></div>',
@@ -248,7 +270,7 @@ final class WC_Agent_Tools_Admin {
 			);
 			printf(
 				'<p><input type="text" class="large-text code" readonly onclick="this.select()" value="%s" /></p>',
-				esc_attr( self::$new_credential['password'] )
+				esc_attr( $this->new_credential['password'] )
 			);
 
 			printf( '<h3>%s</h3>', esc_html__( 'Claude Code', 'woocommerce-agent-tools' ) );
@@ -336,7 +358,7 @@ final class WC_Agent_Tools_Admin {
 	 *
 	 * @param WP_User $user Current user.
 	 */
-	private static function render_capability_warning( WP_User $user ): void {
+	private function render_capability_warning( WP_User $user ): void {
 		printf( '<h2>%s</h2>', esc_html__( 'What the agent will be able to do', 'woocommerce-agent-tools' ) );
 
 		printf(

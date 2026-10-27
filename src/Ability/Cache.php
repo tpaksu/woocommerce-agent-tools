@@ -7,6 +7,10 @@
 
 declare( strict_types=1 );
 
+namespace WooCommerce\AgentTools\Ability;
+
+use WooCommerce\AgentTools\Config;
+
 if ( ! defined( 'ABSPATH' ) ) {
 	exit;
 }
@@ -14,13 +18,29 @@ if ( ! defined( 'ABSPATH' ) ) {
 /**
  * The compiled surface, cached against a fingerprint of the active plugins and their versions.
  */
-final class WC_Agent_Tools_Cache {
+final class Cache {
+
+	/**
+	 * The route table walker.
+	 *
+	 * @var Compiler
+	 */
+	private $compiler;
+
+	/**
+	 * Wire the collaborators this class calls.
+	 *
+	 * @param Compiler $compiler The route table walker.
+	 */
+	public function __construct( Compiler $compiler ) {
+		$this->compiler = $compiler;
+	}
 
 	/**
 	 * Cache fingerprint. Catches activate/deactivate for free from an autoloaded option,
 	 * and plugin updates from the version headers.
 	 */
-	public static function fingerprint(): string {
+	public function fingerprint(): string {
 		$active = (array) get_option( 'active_plugins', array() );
 		sort( $active );
 		$parts = array();
@@ -41,32 +61,32 @@ final class WC_Agent_Tools_Cache {
 	 *
 	 * @return array<int,array<string,mixed>>
 	 */
-	public static function descriptors(): array {
-		$fp     = self::fingerprint();
-		$cached = get_transient( WC_Agent_Tools_Config::CACHE_KEY );
+	public function descriptors(): array {
+		$fp     = $this->fingerprint();
+		$cached = get_transient( Config::CACHE_KEY );
 		if ( is_array( $cached ) && isset( $cached['fp'], $cached['d'] ) && $cached['fp'] === $fp ) {
-			WC_Agent_Tools_Compiler::set_stats( isset( $cached['s'] ) ? (array) $cached['s'] : array(), true );
+			$this->compiler->set_stats( isset( $cached['s'] ) ? (array) $cached['s'] : array(), true );
 			return (array) $cached['d'];
 		}
 
-		$descriptors = WC_Agent_Tools_Compiler::compile();
+		$descriptors = $this->compiler->compile();
 		set_transient(
-			WC_Agent_Tools_Config::CACHE_KEY,
+			Config::CACHE_KEY,
 			array(
 				'fp' => $fp,
 				'd'  => $descriptors,
-				's'  => WC_Agent_Tools_Compiler::stats(),
+				's'  => $this->compiler->stats(),
 			),
 			DAY_IN_SECONDS
 		);
-		WC_Agent_Tools_Compiler::set_stats( WC_Agent_Tools_Compiler::stats(), false );
+		$this->compiler->set_stats( $this->compiler->stats(), false );
 		return $descriptors;
 	}
 
 	/**
 	 * Drop the cache (the manual refresh).
 	 */
-	public static function flush(): void {
-		delete_transient( WC_Agent_Tools_Config::CACHE_KEY );
+	public function flush(): void {
+		delete_transient( Config::CACHE_KEY );
 	}
 }

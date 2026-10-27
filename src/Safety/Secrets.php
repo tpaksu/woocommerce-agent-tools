@@ -7,6 +7,10 @@
 
 declare( strict_types=1 );
 
+namespace WooCommerce\AgentTools\Safety;
+
+use WooCommerce\AgentTools\Config;
+
 if ( ! defined( 'ABSPATH' ) ) {
 	exit;
 }
@@ -14,14 +18,14 @@ if ( ! defined( 'ABSPATH' ) ) {
 /**
  * Replaces credentials in a response with opaque references, and resolves a reference back when it is passed to the field it came from.
  */
-final class WC_Agent_Tools_Secrets {
+final class Secrets {
 
 	/**
 	 * Suspends redaction while a reference is being resolved from its source.
 	 *
 	 * @var bool
 	 */
-	private static $resolving = false;
+	private $resolving = false;
 
 	/**
 	 * Replace secrets in a response with opaque references.
@@ -35,13 +39,13 @@ final class WC_Agent_Tools_Secrets {
 	 * @param string              $owner   Owning plugin slug.
 	 * @return array<string,mixed>
 	 */
-	public static function redact_secrets( array $data, string $ability, string $owner ): array {
-		if ( self::$resolving || '' === $ability ) {
+	public function redact_secrets( array $data, string $ability, string $owner ): array {
+		if ( $this->resolving || '' === $ability ) {
 			return $data;
 		}
-		$map = self::secret_map();
-		self::walk_redact( $data, array(), $ability, $owner, $map );
-		self::store_secret_map( $map );
+		$map = $this->secret_map();
+		$this->walk_redact( $data, array(), $ability, $owner, $map );
+		$this->store_secret_map( $map );
 		return $data;
 	}
 
@@ -54,31 +58,31 @@ final class WC_Agent_Tools_Secrets {
 	 * @param string                 $owner   Owning plugin slug.
 	 * @param array<string,mixed>    $map     Reference map, by reference.
 	 */
-	private static function walk_redact( array &$node, array $pointer, string $ability, string $owner, array &$map ): void {
+	private function walk_redact( array &$node, array $pointer, string $ability, string $owner, array &$map ): void {
 		// A field the route typed as a password: { type: password, value: ... }.
 		if ( isset( $node['type'], $node['value'] ) && 'password' === $node['type'] && is_string( $node['value'] ) && '' !== $node['value'] ) {
 			$field         = (string) ( end( $pointer ) ? end( $pointer ) : 'value' );
-			$node['value'] = self::mint_secret( $ability, array_merge( $pointer, array( 'value' ) ), $field, $owner, $map );
+			$node['value'] = $this->mint_secret( $ability, array_merge( $pointer, array( 'value' ) ), $field, $owner, $map );
 			return;
 		}
 
 		foreach ( $node as $key => &$value ) {
 			$here = array_merge( $pointer, array( (string) $key ) );
 			if ( is_array( $value ) ) {
-				self::walk_redact( $value, $here, $ability, $owner, $map );
+				$this->walk_redact( $value, $here, $ability, $owner, $map );
 				continue;
 			}
 			// REST responses carry stdClass as readily as arrays, and a secret inside one
 			// would otherwise be walked past in silence.
 			if ( is_object( $value ) ) {
 				$inner = (array) $value;
-				self::walk_redact( $inner, $here, $ability, $owner, $map );
+				$this->walk_redact( $inner, $here, $ability, $owner, $map );
 				$value = (object) $inner;
 				continue;
 			}
 			if ( is_string( $key ) && is_string( $value ) && '' !== $value
-				&& in_array( strtolower( $key ), WC_Agent_Tools_Config::SECRET_FIELDS, true ) ) {
-				$value = self::mint_secret( $ability, $here, (string) $key, $owner, $map );
+				&& in_array( strtolower( $key ), Config::SECRET_FIELDS, true ) ) {
+				$value = $this->mint_secret( $ability, $here, (string) $key, $owner, $map );
 			}
 		}
 	}
@@ -92,14 +96,14 @@ final class WC_Agent_Tools_Secrets {
 	 * @param string              $owner   Owning plugin slug.
 	 * @param array<string,mixed> $map     Reference map, by reference.
 	 */
-	private static function mint_secret( string $ability, array $pointer, string $field, string $owner, array &$map ): string {
-		$handle         = WC_Agent_Tools_Config::SECRET_PREFIX . wp_generate_password( 24, false );
+	private function mint_secret( string $ability, array $pointer, string $field, string $owner, array &$map ): string {
+		$handle         = Config::SECRET_PREFIX . wp_generate_password( 24, false );
 		$map[ $handle ] = array(
 			'ability' => $ability,
 			'pointer' => $pointer,
 			'field'   => $field,
 			'owner'   => $owner,
-			'expires' => time() + WC_Agent_Tools_Config::SECRET_TTL,
+			'expires' => time() + Config::SECRET_TTL,
 		);
 		return $handle;
 	}
@@ -116,12 +120,12 @@ final class WC_Agent_Tools_Secrets {
 	 * @param string              $owner Owning plugin of the route being called.
 	 * @return array<string,mixed>
 	 */
-	public static function resolve_secrets( array $input, string $owner ): array {
-		$map = self::secret_map();
+	public function resolve_secrets( array $input, string $owner ): array {
+		$map = $this->secret_map();
 		if ( ! $map ) {
 			return $input;
 		}
-		self::walk_resolve( $input, $map, $owner );
+		$this->walk_resolve( $input, $map, $owner );
 		return $input;
 	}
 
@@ -134,19 +138,19 @@ final class WC_Agent_Tools_Secrets {
 	 * @param array<string,mixed>    $map   Reference map.
 	 * @param string                 $owner Owning plugin of the route being called.
 	 */
-	private static function walk_resolve( array &$node, array $map, string $owner ): void {
+	private function walk_resolve( array &$node, array $map, string $owner ): void {
 		foreach ( $node as $key => &$value ) {
 			if ( is_array( $value ) ) {
-				self::walk_resolve( $value, $map, $owner );
+				$this->walk_resolve( $value, $map, $owner );
 				continue;
 			}
 			if ( is_object( $value ) ) {
 				$inner = (array) $value;
-				self::walk_resolve( $inner, $map, $owner );
+				$this->walk_resolve( $inner, $map, $owner );
 				$value = (object) $inner;
 				continue;
 			}
-			if ( ! is_string( $value ) || 0 !== strpos( $value, WC_Agent_Tools_Config::SECRET_PREFIX ) ) {
+			if ( ! is_string( $value ) || 0 !== strpos( $value, Config::SECRET_PREFIX ) ) {
 				continue;
 			}
 			$entry = isset( $map[ $value ] ) ? $map[ $value ] : null;
@@ -160,7 +164,7 @@ final class WC_Agent_Tools_Secrets {
 			if ( (string) $key !== (string) $entry['field'] ) {
 				continue;
 			}
-			$real = self::read_secret( (string) $entry['ability'], (array) $entry['pointer'] );
+			$real = $this->read_secret( (string) $entry['ability'], (array) $entry['pointer'] );
 			if ( null !== $real ) {
 				$value = $real;
 			}
@@ -174,14 +178,19 @@ final class WC_Agent_Tools_Secrets {
 	 * @param array<int,string> $pointer Path to the value.
 	 * @return string|null
 	 */
-	private static function read_secret( string $ability, array $pointer ): ?string {
+	private function read_secret( string $ability, array $pointer ): ?string {
 		$source = wp_get_ability( $ability );
 		if ( ! $source ) {
 			return null;
 		}
-		self::$resolving = true;
-		$data            = $source->execute( array() );
-		self::$resolving = false;
+		// A throw here would leave the flag set and send every later response in this
+		// request unredacted. Same reason `Dispatcher::dispatch()` guards its depth counter.
+		$this->resolving = true;
+		try {
+			$data = $source->execute( array() );
+		} finally {
+			$this->resolving = false;
+		}
 
 		if ( is_wp_error( $data ) || ! is_array( $data ) ) {
 			return null;
@@ -205,8 +214,8 @@ final class WC_Agent_Tools_Secrets {
 	 *
 	 * @return array<string,mixed>
 	 */
-	private static function secret_map(): array {
-		$map = get_transient( WC_Agent_Tools_Config::SECRET_MAP_KEY . '_' . get_current_user_id() );
+	private function secret_map(): array {
+		$map = get_transient( Config::SECRET_MAP_KEY . '_' . get_current_user_id() );
 		if ( ! is_array( $map ) ) {
 			return array();
 		}
@@ -224,7 +233,7 @@ final class WC_Agent_Tools_Secrets {
 	 *
 	 * @param array<string,mixed> $map Reference map.
 	 */
-	private static function store_secret_map( array $map ): void {
-		set_transient( WC_Agent_Tools_Config::SECRET_MAP_KEY . '_' . get_current_user_id(), $map, WC_Agent_Tools_Config::SECRET_TTL );
+	private function store_secret_map( array $map ): void {
+		set_transient( Config::SECRET_MAP_KEY . '_' . get_current_user_id(), $map, Config::SECRET_TTL );
 	}
 }

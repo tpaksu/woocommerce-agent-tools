@@ -7,6 +7,12 @@
 
 declare( strict_types=1 );
 
+namespace WooCommerce\AgentTools\Safety;
+
+use WooCommerce\AgentTools\Config;
+use WooCommerce\AgentTools\Dispatcher;
+use WP_REST_Request;
+
 if ( ! defined( 'ABSPATH' ) ) {
 	exit;
 }
@@ -28,18 +34,57 @@ if ( ! defined( 'ABSPATH' ) ) {
  * to credentials issued from this plugin's own screen, whose uuids it records. Every other
  * password behaves exactly as before.
  */
-final class WC_Agent_Tools_Rest_Guard {
+final class RestGuard {
+
+	/**
+	 * The confirmation protocol.
+	 *
+	 * @var Confirm
+	 */
+	private $confirm;
+
+	/**
+	 * Route dispatch.
+	 *
+	 * @var Dispatcher
+	 */
+	private $dispatcher;
+
+	/**
+	 * Wire the collaborators this class calls.
+	 *
+	 * @param Confirm    $confirm    The confirmation protocol.
+	 * @param Dispatcher $dispatcher Route dispatch.
+	 */
+	public function __construct(
+		Confirm $confirm,
+		Dispatcher $dispatcher
+	) {
+		$this->confirm    = $confirm;
+		$this->dispatcher = $dispatcher;
+	}
 
 	const OPTION = 'wcat_agent_password_uuids';
 
 	/**
 	 * Hook up.
 	 */
-	public static function init(): void {
+	public function init(): void {
 		// Last, deliberately. Gift Cards hooks this filter with `accepted_args` of 0 and
 		// Product Bundles with 1, so both discard whatever a previous callback returned.
 		// A guard that runs before them is silently thrown away.
-		add_filter( 'rest_pre_dispatch', array( __CLASS__, 'guard' ), PHP_INT_MAX, 3 );
+		add_filter( 'rest_pre_dispatch', array( $this, 'guard' ), PHP_INT_MAX, 3 );
+		// The claim above happens before the route validates parameters or checks permissions,
+		// so it is not proof the call ran. `rest_dispatch_request` fires once both have passed;
+		// anything still recorded after the callbacks gets its confirmation back.
+		add_filter( 'rest_dispatch_request', array( $this, 'commit' ), PHP_INT_MAX, 2 );
+		add_filter( 'rest_request_after_callbacks', array( $this, 'release' ), PHP_INT_MAX, 3 );
+		// Both, because neither covers everything: `after_callbacks` runs inside `dispatch()`,
+		// so it also covers an internally dispatched request, while `post_dispatch` is the only
+		// one that fires when no route matched, or when a `rest_pre_dispatch` callback
+		// registered after ours hijacked the request. A `rest_dispatch_request` callback that
+		// halts does reach `after_callbacks`: core only swaps the response and falls through.
+		add_filter( 'rest_post_dispatch', array( $this, 'release' ), PHP_INT_MAX, 3 );
 	}
 
 	/**
@@ -47,7 +92,7 @@ final class WC_Agent_Tools_Rest_Guard {
 	 *
 	 * @param string $uuid Application password uuid.
 	 */
-	public static function remember_password( string $uuid ): void {
+	public function remember_password( string $uuid ): void {
 		$uuids = (array) get_option( self::OPTION, array() );
 		if ( ! in_array( $uuid, $uuids, true ) ) {
 			$uuids[] = $uuid;
@@ -63,7 +108,7 @@ final class WC_Agent_Tools_Rest_Guard {
 	 * @param mixed $request The request, as whatever reached this filter.
 	 * @return mixed
 	 */
-	public static function guard( $result, $server, $request ) {
+	public function guard( $result, $server, $request ) {
 		if ( null !== $result || ! $request instanceof WP_REST_Request ) {
 			return $result;
 		}
@@ -73,12 +118,12 @@ final class WC_Agent_Tools_Rest_Guard {
 			return $result;
 		}
 
-		if ( ! self::is_agent_credential() ) {
+		if ( ! $this->is_agent_credential() ) {
 			return $result;
 		}
 
 		// An ability's own dispatch is gated one layer up; gating it here is the deadlock.
-		if ( WC_Agent_Tools_Dispatcher::is_internal() ) {
+		if ( $this->dispatcher->is_internal() ) {
 			return $result;
 		}
 
@@ -91,7 +136,7 @@ final class WC_Agent_Tools_Rest_Guard {
 		}
 
 		// A query sent by POST because its payload will not fit in a URL is still a read.
-		foreach ( array_keys( WC_Agent_Tools_Config::QUERY_BY_POST ) as $pattern ) {
+		foreach ( array_keys( Config::QUERY_BY_POST ) as $pattern ) {
 			if ( preg_match( '#^' . str_replace( '#', '\\#', (string) $pattern ) . '$#', $route ) ) {
 				return $result;
 			}
@@ -113,12 +158,12 @@ final class WC_Agent_Tools_Rest_Guard {
 		}
 
 		$params = $request->get_params();
-		unset( $params[ WC_Agent_Tools_Confirm::FIELD ] );
+		unset( $params[ Confirm::FIELD ] );
 
-		$allowed = WC_Agent_Tools_Confirm::gate(
-			$method . ' ' . $route,
+		$allowed = $this->confirm->gate(
+			$this->key( $method, $route ),
 			$method . ' ' . preg_replace( '#\(\?P<([^>]+)>[^)]*\)#', '{$1}', $route ),
-			array_merge( $params, array( WC_Agent_Tools_Confirm::FIELD => (string) $request->get_param( WC_Agent_Tools_Confirm::FIELD ) ) )
+			array_merge( $params, array( Confirm::FIELD => (string) $request->get_param( Confirm::FIELD ) ) )
 		);
 
 		if ( is_wp_error( $allowed ) ) {
@@ -135,6 +180,58 @@ final class WC_Agent_Tools_Rest_Guard {
 	}
 
 	/**
+	 * The key a direct REST write's confirmation is tracked under.
+	 *
+	 * @param string $method HTTP method.
+	 * @param string $route  Route.
+	 */
+	private function key( string $method, string $route ): string {
+		return $method . ' ' . $route;
+	}
+
+	/**
+	 * Stop tracking a claim once the route is about to run its callback.
+	 *
+	 * Commits only when the route's own callback is going to run.
+	 *
+	 * Keyed off the request, not this filter's `$route` argument: that one is the matched
+	 * route pattern, `/wc/v3/orders/(?P<id>[\d]+)`, while the claim was keyed on the path the
+	 * request actually asked for. Keying on the pattern untracked nothing, and the release
+	 * below then re-armed the token after the write had run.
+	 *
+	 * @param mixed $dispatch_result Result, or null to let dispatch proceed.
+	 * @param mixed $request         The request, as whatever reached this filter.
+	 * @return mixed
+	 */
+	public function commit( $dispatch_result, $request ) {
+		// A non-null result means a callback halted the request and the route's own callback
+		// never runs, so the claim has to stay tracked for the release to give it back. This
+		// runs last, which is the only reason it can see that.
+		if ( null === $dispatch_result && $request instanceof WP_REST_Request ) {
+			$this->confirm->commit( $this->key( strtoupper( (string) $request->get_method() ), (string) $request->get_route() ) );
+		}
+		return $dispatch_result;
+	}
+
+	/**
+	 * Hand a confirmation back when the route refused the call before running it.
+	 *
+	 * Registered on two filters whose second argument differs, so only the first and third are
+	 * read. A release with nothing tracked is a no-op, which is what makes that safe.
+	 *
+	 * @param mixed $response Response, or WP_Error.
+	 * @param mixed $unused   Route handler, or the server, depending on the filter.
+	 * @param mixed $request  The request, as whatever reached this filter.
+	 * @return mixed
+	 */
+	public function release( $response, $unused, $request ) {
+		if ( $request instanceof WP_REST_Request ) {
+			$this->confirm->release( $this->key( strtoupper( (string) $request->get_method() ), (string) $request->get_route() ) );
+		}
+		return $response;
+	}
+
+	/**
 	 * Whether this request is agent traffic, and so subject to the gate.
 	 *
 	 * The gate exists to make an agent state a write before it happens. It is not a site-wide
@@ -143,8 +240,8 @@ final class WC_Agent_Tools_Rest_Guard {
 	 * callers that never asked for a confirmation protocol and have nowhere to show a preview.
 	 * Same reasoning as the credential scoping below.
 	 */
-	public static function is_agent_context(): bool {
-		if ( self::is_agent_credential() ) {
+	public function is_agent_context(): bool {
+		if ( $this->is_agent_credential() ) {
 			return true;
 		}
 
@@ -159,7 +256,7 @@ final class WC_Agent_Tools_Rest_Guard {
 	/**
 	 * Whether this request authenticated with a password this plugin issued.
 	 */
-	private static function is_agent_credential(): bool {
+	private function is_agent_credential(): bool {
 		$uuid = $GLOBALS['wp_rest_application_password_uuid'] ?? null;
 		if ( ! is_string( $uuid ) || '' === $uuid ) {
 			return false;

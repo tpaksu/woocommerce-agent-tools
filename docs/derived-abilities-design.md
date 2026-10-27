@@ -439,8 +439,8 @@ Closed since the first draft, and recorded because each failed silently: the `wc
 Still open:
 
 - **No tests and no review.** The largest gap by distance. A confirmation gate with no coverage of its token lifecycle (issue, spend, replay, expiry, a token offered for a different payload) is a liability, and none of the fixes above is protected against regression.
-- **Recovered parameters have names but no shapes.** 46 tools publish 78 parameters found by reading the handler, typed as the permissive union because nothing static can say more. The tool's description names them. Closing this properly needs the owning plugin to declare them, which `woocommerce_agent_tools_route_args` exists for.
-- **31 writes publish an empty input schema.** The description says so rather than letting the gap read as "takes no arguments", which is honesty rather than a fix.
+- **Recovered parameters have names but no shapes.** 49 tools publish 87 parameters found by reading the handler, typed as the permissive union because nothing static can say more. The tool's description names them. Closing this properly needs the owning plugin to declare them, which `woocommerce_agent_tools_route_args` exists for.
+- **38 writes declare no parameters of their own**, so the only property they publish is `confirm`. The description says so rather than letting the gap read as "takes no arguments", and the gate hands the call to the merchant rather than previewing a payload the route never stated.
 - **The discovery payload is unpaged.** It is the single biggest practical obstacle. Every agent across three test rounds spilled it to a file and queried it with a shell, 2 to 3 attempts each; a client without a shell cannot read the tool list at all. This is the MCP Adapter's meta-tool, not this design's, but the design's output is what makes it large.
 - **The gate forces a statement, not a reading.** An agent can return the token immediately, and one confirmed 18 order deletions in sequence. The preview is for the merchant's benefit, not a lock.
 - **Credential-bearing reads are redacted, not withheld.** `GET /wc/v3/payment_gateways` returns `type=password` field values with no masking (`class-wc-rest-payment-gateways-controller.php:92`), as do `settings` and `system_status`. `readonly` describes whether the store changes, not whether a secret leaves it. The execute wrapper replaces such a value with an opaque `wcat_secret:` reference and resolves it back when it is passed to a parameter of the same name, so an agent can reuse a key it was never shown. Deliberately stricter than wp-admin, where the user sees the stored value: the agent is not the user, and a transcript travels further than a screen does. Still needs a security review.
@@ -495,6 +495,8 @@ Built since the first draft: the namespace allowlist and UI-plumbing exclusion l
 
 Reference store on 2026-10-26: WordPress 7.1.3, WooCommerce 11.4.0-dev, MCP Adapter 0.7.1, Bookings 3.12.1, Gift Cards 2.9.1, Product Bundles 8.5.16, WooCommerce Shipping 2.4.3. WooCommerce AI is **not** installed, which is the main difference from the 2026-10-23 figures below it.
 
+The 0.5.0 edit-verb merge and the no-payload class moved several of these counts. The figures in the prose above are current; the tables below are as measured on the dates given.
+
 | Pipeline stage | Count |
 |---|---|
 | Routes seen | 780 |
@@ -519,8 +521,8 @@ Reference store on 2026-10-26: WordPress 7.1.3, WooCommerce 11.4.0-dev, MCP Adap
 | Derived abilities registered | 358 |
 | Hand-written abilities seen for deduplication | 17 |
 | Withheld from agents | 0 |
-| Writes with an empty input schema | 31 |
-| Tools with recovered parameters | 46, across 78 parameters |
+| Writes declaring no parameters | 38 |
+| Tools with recovered parameters | 49, across 87 parameters |
 | Abilities an agent discovers over MCP | 377 |
 | Abilities an agent discovered before derivation | 14 |
 
@@ -537,7 +539,7 @@ Kept because the deltas are the argument for several of the fixes above. That st
 | Derived abilities registered | 323 | 358 |
 | of which reads | 155 | 188 |
 | of which writes | 168 | 170 |
-| Writes with an empty input schema | 56 | 31 |
+| Writes declaring no parameters | 56 | 38 |
 
 | Metadata coverage, full table | Value |
 |---|---|

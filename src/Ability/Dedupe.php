@@ -7,6 +7,11 @@
 
 declare( strict_types=1 );
 
+namespace WooCommerce\AgentTools\Ability;
+
+use WooCommerce\AgentTools\Config;
+use WooCommerce\AgentTools\Route\Naming;
+
 if ( ! defined( 'ABSPATH' ) ) {
 	exit;
 }
@@ -14,7 +19,23 @@ if ( ! defined( 'ABSPATH' ) ) {
 /**
  * Signatures of hand-written abilities, so a derived duplicate yields to one an author wrote.
  */
-final class WC_Agent_Tools_Dedupe {
+final class Dedupe {
+
+	/**
+	 * Ability naming.
+	 *
+	 * @var Naming
+	 */
+	private $naming;
+
+	/**
+	 * Wire the collaborators this class calls.
+	 *
+	 * @param Naming $naming Ability naming.
+	 */
+	public function __construct( Naming $naming ) {
+		$this->naming = $naming;
+	}
 
 	/**
 	 * Signatures of abilities already declared by hand, scoped by owning namespace.
@@ -27,7 +48,7 @@ final class WC_Agent_Tools_Dedupe {
 	 *
 	 * @return array<string,array{name:string,params:int}>
 	 */
-	public static function declared_signatures(): array {
+	public function declared_signatures(): array {
 		$out = array();
 		foreach ( wp_get_abilities() as $ability ) {
 			$name = $ability->get_name();
@@ -39,7 +60,7 @@ final class WC_Agent_Tools_Dedupe {
 			// suppressing derived abilities of our own.
 			if ( in_array(
 				$ability->get_category(),
-				array( WC_Agent_Tools_Config::CATEGORY, WC_Agent_Tools_Config::DISCOVERY_CATEGORY ),
+				array( Config::CATEGORY, Config::DISCOVERY_CATEGORY, Config::SURFACE_CATEGORY ),
 				true
 			) ) {
 				continue;
@@ -50,14 +71,14 @@ final class WC_Agent_Tools_Dedupe {
 			$ops               = array();
 			$res               = array();
 			foreach ( $words as $w ) {
-				if ( '' === WC_Agent_Tools_Naming::op_class( $w ) ) {
+				if ( '' === $this->naming->op_class( $w ) ) {
 					$res[] = $w;
 				} else {
-					$ops[] = WC_Agent_Tools_Naming::op_class( $w );
+					$ops[] = $this->naming->op_class( $w );
 				}
 			}
 			$op          = $ops ? $ops[0] : 'read';
-			$sig         = $ns . '|' . WC_Agent_Tools_Naming::resource_key( implode( '-', $res ) ) . '|' . $op;
+			$sig         = $ns . '|' . $this->naming->resource_key( implode( '-', $res ) ) . '|' . $op;
 			$schema      = (array) $ability->get_input_schema();
 			$out[ $sig ] = array(
 				'name'   => $name,
